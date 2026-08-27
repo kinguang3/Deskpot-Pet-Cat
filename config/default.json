@@ -1,0 +1,33 @@
+{
+    "window": {
+        "size_scale": 1.0,
+        "opacity": 0.95,
+        "always_on_top": true
+    },
+    "animation": {
+        "idle_fps": 6,
+        "walk_fps": 8,
+        "typing_fps": 8,
+        "watching_fps": 6,
+        "sleep_fps": 2
+    },
+    "behavior": {
+        "auto_move": true,
+        "dialogue_enabled": true,
+        "idle_to_walk_chance": 0.3,
+        "walk_duration_min": 2000,
+        "walk_duration_max": 5000,
+        "idle_duration_min": 3000,
+        "idle_duration_max": 8000,
+        "sleep_after_inactive_ms": 300000
+    },
+    "pet": {
+        "name": "Nina",
+        "default_x": -1,
+        "default_y": -1
+    },
+    "audio": {
+        "enabled": true,
+        "volume": 0.5
+    }
+}
