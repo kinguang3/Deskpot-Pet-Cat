@@ -6,7 +6,7 @@
 
 import random
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QTimer, QObject
+from PySide6.QtCore import QTimer, QObject, QEvent
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
@@ -84,6 +84,9 @@ class App(QObject):
 
         # 连接事件
         self._connect_events()
+
+        # 安装事件过滤器
+        self._window.installEventFilter(self)
 
     def _setup_states(self):
         """注册并配置所有行为状态。"""
@@ -194,6 +197,18 @@ class App(QObject):
         self._dialogue_bubble.show()
         self._dialogue_bubble.raise_()
 
+    def _update_bubble_position(self):
+        """若气泡可见，重新定位"""
+        if not self._dialogue_bubble.isVisible():
+            return
+        pet_x = self._window.pos().x()
+        pet_y = self._window.pos().y()
+        pet_w = self._window.width()
+        bubble_w = self._dialogue_bubble.width()
+        bubble_x = pet_x + (pet_w - bubble_w) // 2
+        bubble_y = pet_y - self._dialogue_bubble.height() - 5
+        self._dialogue_bubble.move(bubble_x, bubble_y)
+
     def _random_dialogue(self):
         """随机显示一句对话。"""
         if self._state_machine.is_state("sleep"):
@@ -258,3 +273,9 @@ class App(QObject):
     def _on_state_changed(self, data: dict):
         """状态变化回调。"""
         pass
+
+    def eventFilter(self, watched, event):
+        """事件过滤器"""
+        if watched is self._window and event.type() == QEvent.Move:
+            self._update_bubble_position()
+        return super().eventFilter(watched, event)
