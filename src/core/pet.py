@@ -1,3 +1,6 @@
+# Copyright (c) 2026 kinguang3<548635581@qq.com>, CrimsonSeraph<ltyy.leoyu@gmail.com>
+# SPDX-License-Identifier: MIT
+
 """宠物实体模块
 
 管理 Nina 的位置、朝向、状态，以及与窗口和动画的协调。

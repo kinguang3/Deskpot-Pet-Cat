@@ -1,3 +1,6 @@
+# Copyright (c) 2026 kinguang3<548635581@qq.com>, CrimsonSeraph<ltyy.leoyu@gmail.com>
+# SPDX-License-Identifier: MIT
+
 """配置管理模块
 
 负责加载、读取、保存配置。

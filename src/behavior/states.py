@@ -1,3 +1,6 @@
+# Copyright (c) 2026 kinguang3<548635581@qq.com>, CrimsonSeraph<ltyy.leoyu@gmail.com>
+# SPDX-License-Identifier: MIT
+
 """行为状态定义
 
 定义 Nina 的各种行为状态：

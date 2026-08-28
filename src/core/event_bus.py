@@ -1,3 +1,6 @@
+# Copyright (c) 2026 kinguang3<548635581@qq.com>, CrimsonSeraph<ltyy.leoyu@gmail.com>
+# SPDX-License-Identifier: MIT
+
 """事件总线模块
 
 模块间通过事件通信，避免直接引用。

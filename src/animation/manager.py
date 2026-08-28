@@ -1,3 +1,6 @@
+# Copyright (c) 2026 kinguang3<548635581@qq.com>, CrimsonSeraph<ltyy.leoyu@gmail.com>
+# SPDX-License-Identifier: MIT
+
 """动画管理器模块
 
 控制动画播放、切换、循环、帧率。

@@ -1,3 +1,6 @@
+# Copyright (c) 2026 kinguang3<548635581@qq.com>, CrimsonSeraph<ltyy.leoyu@gmail.com>
+# SPDX-License-Identifier: MIT
+
 """精灵图加载模块
 
 从 assets 目录加载猫咪精灵图，按动画类型分组缓存。
