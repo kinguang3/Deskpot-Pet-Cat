@@ -49,7 +49,11 @@ class ConfigManager:
     def _deep_merge(self, base: dict, override: dict):
         """将 override 的值深度合并到 base 中。"""
         for key, value in override.items():
-            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            if (
+                key in base
+                and isinstance(base[key], dict)
+                and isinstance(value, dict)
+            ):
                 self._deep_merge(base[key], value)
             else:
                 base[key] = value

@@ -4,8 +4,14 @@
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QSlider, QCheckBox, QPushButton, QGroupBox
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QSlider,
+    QCheckBox,
+    QPushButton,
+    QGroupBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -25,7 +31,10 @@ class SettingsPanel(QWidget):
 
         self.setWindowTitle("GBC Nina - 设置")
         self.setFixedSize(320, 400)
-        self.setWindowFlags(Qt.WindowType.WindowCloseButtonHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(
+            Qt.WindowType.WindowCloseButtonHint
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
 
         self._setup_ui()
         self._load_settings()
@@ -99,25 +108,43 @@ class SettingsPanel(QWidget):
 
         # 连接信号
         self._size_slider.valueChanged.connect(
-            lambda v: self._size_label.setText(f"{v}%"))
+            lambda v: self._size_label.setText(f"{v}%")
+        )
         self._opacity_slider.valueChanged.connect(
-            lambda v: self._opacity_label.setText(f"{v}%"))
+            lambda v: self._opacity_label.setText(f"{v}%")
+        )
 
     def _load_settings(self):
         """从配置加载当前值。"""
-        self._size_slider.setValue(int(self._config.get("window.size_scale", 1.0) * 100))
-        self._opacity_slider.setValue(int(self._config.get("window.opacity", 0.95) * 100))
-        self._topmost_check.setChecked(self._config.get("window.always_on_top", True))
-        self._auto_move_check.setChecked(self._config.get("behavior.auto_move", True))
-        self._dialogue_check.setChecked(self._config.get("behavior.dialogue_enabled", True))
+        self._size_slider.setValue(
+            int(self._config.get("window.size_scale", 1.0) * 100)
+        )
+        self._opacity_slider.setValue(
+            int(self._config.get("window.opacity", 0.95) * 100)
+        )
+        self._topmost_check.setChecked(
+            self._config.get("window.always_on_top", True)
+        )
+        self._auto_move_check.setChecked(
+            self._config.get("behavior.auto_move", True)
+        )
+        self._dialogue_check.setChecked(
+            self._config.get("behavior.dialogue_enabled", True)
+        )
 
     def _save_settings(self):
         """保存设置到配置。"""
         self._config.set("window.size_scale", self._size_slider.value() / 100)
         self._config.set("window.opacity", self._opacity_slider.value() / 100)
-        self._config.set("window.always_on_top", self._topmost_check.isChecked())
-        self._config.set("behavior.auto_move", self._auto_move_check.isChecked())
-        self._config.set("behavior.dialogue_enabled", self._dialogue_check.isChecked())
+        self._config.set(
+            "window.always_on_top", self._topmost_check.isChecked()
+        )
+        self._config.set(
+            "behavior.auto_move", self._auto_move_check.isChecked()
+        )
+        self._config.set(
+            "behavior.dialogue_enabled", self._dialogue_check.isChecked()
+        )
         self._config.save()
 
         self.settings_changed.emit()

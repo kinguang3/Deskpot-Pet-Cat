@@ -72,7 +72,9 @@ class AnimationManager(QObject):
 
         frames = self._loader.load_animation(animation_name)
         if not frames:
-            print(f"[AnimationManager] No frames for animation: {animation_name}")
+            print(
+                f"[AnimationManager] No frames for animation: {animation_name}"
+            )
             return
 
         self.stop()
@@ -90,11 +92,14 @@ class AnimationManager(QObject):
         self.frame_changed.emit(self.current_frame)
 
         # 广播动画开始事件
-        self._event_bus.emit("animation.started", {
-            "animation": animation_name,
-            "frame_count": len(frames),
-            "loop": loop,
-        })
+        self._event_bus.emit(
+            "animation.started",
+            {
+                "animation": animation_name,
+                "frame_count": len(frames),
+                "loop": loop,
+            },
+        )
 
     def stop(self):
         """停止当前动画。"""
@@ -103,9 +108,12 @@ class AnimationManager(QObject):
         self._playing = False
 
         if was_playing and self._current_animation:
-            self._event_bus.emit("animation.stopped", {
-                "animation": self._current_animation,
-            })
+            self._event_bus.emit(
+                "animation.stopped",
+                {
+                    "animation": self._current_animation,
+                },
+            )
 
     def pause(self):
         """暂停动画。"""
@@ -133,15 +141,21 @@ class AnimationManager(QObject):
         if self._current_frame >= len(self._frames):
             if self._loop:
                 self._current_frame = 0
-                self._event_bus.emit("animation.looped", {
-                    "animation": self._current_animation,
-                })
+                self._event_bus.emit(
+                    "animation.looped",
+                    {
+                        "animation": self._current_animation,
+                    },
+                )
             else:
                 self._current_frame = len(self._frames) - 1
                 self.stop()
-                self._event_bus.emit("animation.finished", {
-                    "animation": self._current_animation,
-                })
+                self._event_bus.emit(
+                    "animation.finished",
+                    {
+                        "animation": self._current_animation,
+                    },
+                )
                 return
 
         self.frame_changed.emit(self.current_frame)

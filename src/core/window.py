@@ -59,8 +59,10 @@ class PetWindow(QMainWindow):
         self._base_width = 175
         self._base_height = 175
         self._scale = 1.0
-        self.resize(int(self._base_width * self._scale),
-                     int(self._base_height * self._scale))
+        self.resize(
+            int(self._base_width * self._scale),
+            int(self._base_height * self._scale),
+        )
 
     def set_frame(self, pixmap: QPixmap):
         """设置当前要绘制的精灵帧。"""
@@ -96,11 +98,14 @@ class PetWindow(QMainWindow):
             event.accept()
 
         self.clicked.emit(event)
-        self._event_bus.emit("window.mouse_pressed", {
-            "button": event.button(),
-            "x": event.position().x(),
-            "y": event.position().y(),
-        })
+        self._event_bus.emit(
+            "window.mouse_pressed",
+            {
+                "button": event.button(),
+                "x": event.position().x(),
+                "y": event.position().y(),
+            },
+        )
 
     def mouseMoveEvent(self, event: QMouseEvent):
         """处理鼠标移动 - 拖动窗口。"""
@@ -109,10 +114,13 @@ class PetWindow(QMainWindow):
             self.move(new_pos)
             event.accept()
 
-            self._event_bus.emit("window.mouse_moved", {
-                "x": new_pos.x(),
-                "y": new_pos.y(),
-            })
+            self._event_bus.emit(
+                "window.mouse_moved",
+                {
+                    "x": new_pos.x(),
+                    "y": new_pos.y(),
+                },
+            )
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         """处理鼠标释放 - 结束拖动。"""
@@ -121,17 +129,23 @@ class PetWindow(QMainWindow):
             self.dragged.emit(self.pos().x(), self.pos().y())
             event.accept()
 
-            self._event_bus.emit("window.mouse_released", {
-                "x": self.pos().x(),
-                "y": self.pos().y(),
-            })
+            self._event_bus.emit(
+                "window.mouse_released",
+                {
+                    "x": self.pos().x(),
+                    "y": self.pos().y(),
+                },
+            )
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         """处理鼠标双击。"""
         self.double_clicked.emit(event)
-        self._event_bus.emit("window.double_clicked", {
-            "button": event.button(),
-        })
+        self._event_bus.emit(
+            "window.double_clicked",
+            {
+                "button": event.button(),
+            },
+        )
 
     def enterEvent(self, event):
         """鼠标进入窗口。"""

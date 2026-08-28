@@ -103,10 +103,13 @@ class StateMachine(QObject):
         self._current.enter()
 
         self.state_changed.emit(old_name, name)
-        self._event_bus.emit("state.changed", {
-            "from": old_name,
-            "to": name,
-        })
+        self._event_bus.emit(
+            "state.changed",
+            {
+                "from": old_name,
+                "to": name,
+            },
+        )
 
         return True
 

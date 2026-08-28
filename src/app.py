@@ -16,8 +16,13 @@ from src.animation.sprites import SpriteLoader
 from src.animation.manager import AnimationManager
 from src.behavior.state_machine import StateMachine
 from src.behavior.states import (
-    IdleState, WalkState, SleepState,
-    WatchState, TypingState, ClickedState, DraggedState,
+    IdleState,
+    WalkState,
+    SleepState,
+    WatchState,
+    TypingState,
+    ClickedState,
+    DraggedState,
 )
 from src.interaction.mouse import MouseInteraction
 from src.dialogue.bubble import DialogueBubble
@@ -104,7 +109,9 @@ class App(QObject):
 
         # 交互事件
         self._event_bus.on("interaction.single_click", self._on_pet_click)
-        self._event_bus.on("interaction.double_click", self._on_pet_double_click)
+        self._event_bus.on(
+            "interaction.double_click", self._on_pet_double_click
+        )
         self._event_bus.on("interaction.right_click", self._on_pet_right_click)
         self._event_bus.on("interaction.hover_enter", self._on_hover_enter)
         self._event_bus.on("interaction.hover_leave", self._on_hover_leave)

@@ -43,7 +43,7 @@ class SystemTray(QObject):
         painter.setPen(QColor(200, 140, 70))
         painter.drawEllipse(16, 28, 32, 30)  # 掌心
         painter.drawEllipse(10, 14, 16, 16)  # 左上趾
-        painter.drawEllipse(26, 8, 14, 14)   # 中上趾
+        painter.drawEllipse(26, 8, 14, 14)  # 中上趾
         painter.drawEllipse(40, 14, 16, 16)  # 右上趾
 
         painter.end()

@@ -14,7 +14,9 @@ class Storage:
 
     def __init__(self, data_dir: str = None):
         if data_dir is None:
-            data_dir = str(Path(__file__).resolve().parent.parent.parent / "data")
+            data_dir = str(
+                Path(__file__).resolve().parent.parent.parent / "data"
+            )
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._cache: dict[str, Any] = {}

@@ -64,9 +64,12 @@ class WalkState(State):
         self._machine.anim.play(anim)
 
         # 通知行为管理器移动宠物
-        self._event_bus.emit("behavior.walk_started", {
-            "direction": "right" if self._direction_right else "left",
-        })
+        self._event_bus.emit(
+            "behavior.walk_started",
+            {
+                "direction": "right" if self._direction_right else "left",
+            },
+        )
 
         delay = random.randint(2000, 5000)
         self._timer.start(delay)

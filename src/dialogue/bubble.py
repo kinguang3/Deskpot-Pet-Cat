@@ -14,7 +14,9 @@ class DialogueBubble(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
+        )
         self.setVisible(False)
 
         self._text: str = ""
@@ -57,9 +59,7 @@ class DialogueBubble(QWidget):
         font = QFont("Microsoft YaHei", 10)
         fm = self.fontMetrics()
         text_rect = fm.boundingRect(
-            0, 0, 300, 1000,
-            Qt.TextFlag.TextWordWrap,
-            self._text
+            0, 0, 300, 1000, Qt.TextFlag.TextWordWrap, self._text
         )
 
         padding = 20
@@ -79,7 +79,9 @@ class DialogueBubble(QWidget):
         # 绘制圆角矩形气泡背景
         path = QPainterPath()
         rect = self.rect().adjusted(2, 2, -2, -2)
-        path.addRoundedRect(rect.x(), rect.y(), rect.width(), rect.height(), 12, 12)
+        path.addRoundedRect(
+            rect.x(), rect.y(), rect.width(), rect.height(), 12, 12
+        )
 
         # 气泡背景色
         painter.fillPath(path, QColor(255, 255, 255, 230))
@@ -102,6 +104,10 @@ class DialogueBubble(QWidget):
         painter.setPen(QColor(60, 60, 60))
         painter.setFont(QFont("Microsoft YaHei", 10))
         text_rect = rect.adjusted(10, 10, -10, -10)
-        painter.drawText(text_rect, Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignCenter, self._text)
+        painter.drawText(
+            text_rect,
+            Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignCenter,
+            self._text,
+        )
 
         painter.end()

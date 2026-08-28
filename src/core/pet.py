@@ -20,7 +20,9 @@ class Pet(QObject):
     - 广播宠物状态事件
     """
 
-    def __init__(self, window: PetWindow, anim_manager: AnimationManager, parent=None):
+    def __init__(
+        self, window: PetWindow, anim_manager: AnimationManager, parent=None
+    ):
         super().__init__(parent)
         self._window = window
         self._anim = anim_manager

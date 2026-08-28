@@ -6,7 +6,6 @@
 from pathlib import Path
 from PySide6.QtGui import QPixmap
 
-
 # 动画名称 -> 文件名前缀的映射
 ANIMATION_MAP = {
     "idle": "cat_idle",
@@ -32,7 +31,9 @@ class SpriteLoader:
 
     def __init__(self, assets_dir: str = None):
         if assets_dir is None:
-            assets_dir = str(Path(__file__).resolve().parent.parent.parent / "assets")
+            assets_dir = str(
+                Path(__file__).resolve().parent.parent.parent / "assets"
+            )
         self._assets_dir = Path(assets_dir)
         self._cache: dict[str, list[QPixmap]] = {}
         self._single_cache: dict[str, QPixmap] = {}
@@ -68,7 +69,9 @@ class SpriteLoader:
             self._cache[name] = frames
             w, h = frames[0].width(), frames[0].height()
             self._frame_size[name] = (w, h)
-            print(f"[SpriteLoader] Loaded animation '{name}': {len(frames)} frames, {w}x{h}")
+            print(
+                f"[SpriteLoader] Loaded animation '{name}': {len(frames)} frames, {w}x{h}"
+            )
 
         return frames
 
