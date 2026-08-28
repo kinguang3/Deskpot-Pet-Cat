@@ -1,0 +1,21 @@
+[tool.black]
+target-version = ['py37', 'py38', 'py39', 'py310', 'py311']
+line-length = 79
+skip-string-normalization = true
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | examples
+  | vendored
+  | _vendor
+)/
+'''

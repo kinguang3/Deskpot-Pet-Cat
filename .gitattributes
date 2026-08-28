@@ -1,1 +1,30 @@
+* text=auto
+
+*.py text charset=utf-8
+*.pyi text charset=utf-8
+*.pyx text charset=utf-8
+*.pxd text charset=utf-8
+
+*.md text charset=utf-8
+*.txt text charset=utf-8
+*.json text charset=utf-8
+*.yaml text charset=utf-8
+*.yml text charset=utf-8
+*.toml text charset=utf-8
+
+*.sh text eol=lf
+*.bash text eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.so binary
+*.dll binary
+*.pyd binary
+
 *.png filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.zip filter=lfs diff=lfs merge=lfs -text
