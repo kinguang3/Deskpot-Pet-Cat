@@ -136,6 +136,8 @@ class App(QObject):
     def _apply_config(self):
         """应用配置到各个模块。"""
         scale = self._config.get("window.size_scale", 1.0)
+        self._window.set_scale(scale)
+
         opacity = self._config.get("window.opacity", 0.95)
         self._window.set_opacity(opacity)
 

@@ -55,17 +55,28 @@ class PetWindow(QMainWindow):
 
         self.setStyleSheet("background: transparent;")
 
+        # 窗口默认配置
+        self._base_width = 175
+        self._base_height = 175
+        self._scale = 1.0
+        self.resize(int(self._base_width * self._scale),
+                     int(self._base_height * self._scale))
+
     def set_frame(self, pixmap: QPixmap):
         """设置当前要绘制的精灵帧。"""
         self._current_pixmap = pixmap
-        if not pixmap.isNull():
-            self.setFixedSize(pixmap.size())
         self.update()
 
     def set_opacity(self, opacity: float):
         """设置窗口透明度 (0.0 ~ 1.0)。"""
         self._opacity = max(0.0, min(1.0, opacity))
         self.setWindowOpacity(self._opacity)
+
+    def set_scale(self, scale: float):
+        self._scale = max(0.5, min(2.0, scale))
+        new_w = int(self._base_width * self._scale)
+        new_h = int(self._base_height * self._scale)
+        self.resize(new_w, new_h)
 
     def paintEvent(self, event):
         """绘制当前帧到窗口。"""
@@ -74,7 +85,7 @@ class PetWindow(QMainWindow):
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.drawPixmap(0, 0, self._current_pixmap)
+        painter.drawPixmap(self.rect(), self._current_pixmap)
         painter.end()
 
     def mousePressEvent(self, event: QMouseEvent):
