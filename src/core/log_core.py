@@ -44,19 +44,21 @@ class ClassnameFilter(Filter):
     """
 
     def filter(self, record: LogRecord) -> bool:
-        if hasattr(record, 'classname'):
+        if hasattr(record, '_caller_filled'):
             return True
-        # 获取调用栈，寻找第一个“外部”类（非 logging 相关、非 CustomLogger）
+
         stack = inspect.stack()
-        # 从第3帧开始（跳过本filter的调用栈）
-        for frame_info in stack[
-            3:
-        ]:  # 索引0是当前filter，1是handler，2是logger，3是实际调用
+
+        for idx in range(3, len(stack)):
+            frame_info = stack[idx]
             frame = frame_info.frame
-            # 检查是否有 'self'
+
+            # 跳过 CustomLogger 自身的方法
             if 'self' in frame.f_locals:
                 obj = frame.f_locals['self']
-                # 跳过 logging 内部类和我们自己的 CustomLogger
+                if isinstance(obj, CustomLogger):
+                    continue
+                # 也跳过 logging 内部对象
                 if isinstance(
                     obj,
                     (
@@ -67,14 +69,36 @@ class ClassnameFilter(Filter):
                     ),
                 ):
                     continue
-                if obj.__class__.__name__ == 'CustomLogger':
-                    continue
-                # 找到了调用者的实例，提取类名
-                record.classname = obj.__class__.__name__
-                break
-        else:
-            # 未找到合适的类，可能由函数直接调用，使用模块名
-            record.classname = record.module
+
+            # 额外保护：如果函数名是 info/warning 等且位于 log_core.py，跳过
+            if frame_info.function in (
+                'debug',
+                'info',
+                'warning',
+                'error',
+                'critical',
+            ) and frame_info.filename.replace('\\', '/').endswith(
+                'log_core.py'
+            ):
+                continue
+
+            if 'self' in frame.f_locals:
+                record.classname = frame.f_locals['self'].__class__.__name__
+            else:
+                # 如果是普通函数（无 self），用模块名
+                record.classname = frame.f_globals.get(
+                    '__name__', record.module
+                )
+
+            # 修正函数名和行号
+            record.funcName = frame_info.function
+            record.lineno = frame_info.lineno
+
+            record._caller_filled = True
+            return True
+
+        # 保底逻辑
+        record._caller_filled = True
         return True
 
 
