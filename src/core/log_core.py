@@ -14,7 +14,9 @@ import time
 import glob
 import atexit
 import inspect
-from logging import Filter, LogRecord
+import sys
+
+from logging import Filter, LogRecord, StreamHandler
 
 
 class LevelFilter(Filter):
@@ -101,6 +103,7 @@ class CustomLogger:
         datefmt: str = '%Y-%m-%d %H:%M:%S',
         filter_level: int = None,
         filter_mode: str = 'above',
+        console_output: bool = True,
     ):
 
         self.log_dir = log_dir.strip().replace('\n', '').replace('\r', '')
@@ -112,6 +115,8 @@ class CustomLogger:
         self.datefmt = datefmt
         self.filter_level = filter_level if filter_level is not None else level
         self.filter_mode = filter_mode
+        self.console_output = console_output
+        self.console_handler = None
 
         # 默认格式
         if fmt is None:
@@ -145,27 +150,36 @@ class CustomLogger:
         log_path = os.path.join(self.log_dir, log_filename)
         log_path = log_path.replace('\\', '/')
 
-        # 创建 logger（级别设为 DEBUG，由过滤器精确控制）
-        self.logger = logging.getLogger('CustomLogger')
+        # 创建 logger
+        logger_name = f'CustomLogger_{id(self)}'
+        self.logger = logging.getLogger(logger_name)
         self.logger.setLevel(self.level)
 
         # 创建 FileHandler
-        self.handler = logging.FileHandler(log_path, encoding='utf-8')
-        self.handler.setLevel(logging.DEBUG)
-
-        # 设置格式
+        file_handler = logging.FileHandler(log_path, encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter(self.fmt, self.datefmt)
-        self.handler.setFormatter(formatter)
+        file_handler.setFormatter(formatter)
 
         # 添加过滤器（注意顺序：先类名过滤器，再级别过滤器）
         self.class_filter = ClassnameFilter()
-        self.handler.addFilter(self.class_filter)
-
+        file_handler.addFilter(self.class_filter)
         self.level_filter = LevelFilter(self.filter_level, self.filter_mode)
-        self.handler.addFilter(self.level_filter)
+        file_handler.addFilter(self.level_filter)
 
         # 将 handler 加入 logger
-        self.logger.addHandler(self.handler)
+        self.logger.addHandler(file_handler)
+        self.handler = file_handler
+
+        # 控制台 Handler
+        if self.console_output:
+            console_handler = StreamHandler(sys.stdout)
+            console_handler.setLevel(logging.DEBUG)
+            console_handler.setFormatter(formatter)
+            console_handler.addFilter(self.class_filter)
+            console_handler.addFilter(self.level_filter)
+            self.logger.addHandler(console_handler)
+            self.console_handler = console_handler
 
         # 写入启动标记
         self.logger.info(
@@ -184,6 +198,12 @@ class CustomLogger:
         # 移除 handler 并关闭文件
         self.logger.removeHandler(self.handler)
         self.handler.close()
+
+        # 如果启用控制台，移除控制台 Handler
+        if self.console_handler:
+            self.logger.removeHandler(self.console_handler)
+            self.console_handler.close()
+            self.console_handler = None
 
         # 清理多余日志文件
         self._cleanup_old_logs()
