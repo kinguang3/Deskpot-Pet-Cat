@@ -24,7 +24,6 @@ import os
 import sys
 import time
 from logging import Filter, LogRecord, StreamHandler
-from pathlib import Path
 
 DEFAULT_LOG_DIR = "./logs"
 DEFAULT_LOG_PREFIX = "app"
@@ -141,11 +140,11 @@ def _cleanup_old_logs():
 
 
 def setup_logger(
-    debug_mode: bool = False,
+    debug_mode: bool = True,
     log_dir: str = DEFAULT_LOG_DIR,
     log_prefix: str = DEFAULT_LOG_PREFIX,
     max_log_files: int = DEFAULT_MAX_FILES,
-    console_level: int = None,
+    console_level: int = logging.DEBUG,
     file_level: int = logging.DEBUG,
     filter_level: int = None,
     filter_mode: str = "above",

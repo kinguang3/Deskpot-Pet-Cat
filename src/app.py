@@ -9,7 +9,7 @@
 
 import random
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QTimer, QObject, QEvent
+from PySide6.QtCore import QTimer, QObject, QEvent, Qt
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
@@ -165,6 +165,24 @@ class App(QObject):
         opacity = self._config.get("window.opacity", 0.95)
         self._window.set_opacity(opacity)
 
+    def _apply_settings_preview(self, settings: dict):
+        """根据预览设置实时更新桌宠窗口"""
+        # 大小缩放
+        scale = settings.get("window.size_scale", 1.0)
+        self._window.set_scale(scale)  # 假设你有一个调整大小的函数
+        # 透明度
+        opacity = settings.get("window.opacity", 0.95)
+        self._window.setWindowOpacity(opacity)
+        # 置顶
+        topmost = settings.get("window.always_on_top", True)
+        flags = self._window.windowFlags()
+        if topmost:
+            flags |= Qt.WindowType.WindowStaysOnTopHint
+        else:
+            flags &= ~Qt.WindowType.WindowStaysOnTopHint
+        self._window.setWindowFlags(flags)
+        self._window.show()
+
     def _show_window(self):
         """显示窗口。"""
         self._window.show()
@@ -181,6 +199,9 @@ class App(QObject):
         if self._settings_panel is None:
             self._settings_panel = SettingsPanel()
             self._settings_panel.settings_changed.connect(self._apply_config)
+            self._settings_panel.preview_changed.connect(
+                self._apply_settings_preview
+            )
         self._settings_panel.show()
         self._settings_panel.raise_()
         logger.debug("Settings panel opened")

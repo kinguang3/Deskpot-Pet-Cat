@@ -85,14 +85,23 @@ class PetWindow(QMainWindow):
         """设置窗口透明度 (0.0 ~ 1.0)。"""
         self._opacity = max(0.0, min(1.0, opacity))
         self.setWindowOpacity(self._opacity)
-        logger.debug("Window opacity set to %.2f", self._opacity)
 
     def set_scale(self, scale: float):
         self._scale = max(0.5, min(2.0, scale))
         new_w = int(self._base_width * self._scale)
         new_h = int(self._base_height * self._scale)
-        self.resize(new_w, new_h)
-        logger.debug("Window scale set to %.1f (%dx%d)", self._scale, new_w, new_h)
+
+        # 获取当前窗口几何（包含边框）
+        geo = self.geometry()
+        center_x = geo.x() + geo.width() / 2
+        center_y = geo.y() + geo.height() / 2
+
+        # 计算新位置（使中心对齐）
+        new_x = int(center_x - new_w / 2)
+        new_y = int(center_y - new_h / 2)
+
+        # 一次性设置几何，避免中间状态闪烁
+        self.setGeometry(new_x, new_y, new_w, new_h)
 
     def paintEvent(self, event):
         """绘制当前帧到窗口。"""
