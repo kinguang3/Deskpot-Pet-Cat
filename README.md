@@ -448,4 +448,6 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 ## 十二、联系方式
 
 - 作者: [kinguang3]
-- GitHub: [https://github.com/kinguang3/Deskpot-Pet-Cat](https://github.com/kinguang3/Deskpot-Pet-Cat)
+- BiliBili: [浪天幽影(UID: 1741002917)](https://space.bilibili.com/1741002917?spm_id_from=333.1007.0.0)
+- X: [CrimsonSeraph(@CrimSeraph_QwQ)](https://x.com/CrimSeraph_QwQ)
+- 项目主页: [https://github.com/kinguang3/Deskpot-Pet-Cat](https://github.com/kinguang3/Deskpot-Pet-Cat)
