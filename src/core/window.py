@@ -7,11 +7,14 @@
 支持拖动移动。
 """
 
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout
+from PySide6.QtWidgets import QMainWindow, QWidget
 from PySide6.QtCore import Qt, QPoint, Signal
 from PySide6.QtGui import QPixmap, QPainter, QMouseEvent
 
 from src.core.event_bus import EventBus
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class PetWindow(QMainWindow):
@@ -66,6 +69,12 @@ class PetWindow(QMainWindow):
             int(self._base_width * self._scale),
             int(self._base_height * self._scale),
         )
+        logger.debug(
+            "Pet window created (base: %dx%d, scale: %.1f)",
+            self._base_width,
+            self._base_height,
+            self._scale,
+        )
 
     def set_frame(self, pixmap: QPixmap):
         """设置当前要绘制的精灵帧。"""
@@ -76,12 +85,14 @@ class PetWindow(QMainWindow):
         """设置窗口透明度 (0.0 ~ 1.0)。"""
         self._opacity = max(0.0, min(1.0, opacity))
         self.setWindowOpacity(self._opacity)
+        logger.debug("Window opacity set to %.2f", self._opacity)
 
     def set_scale(self, scale: float):
         self._scale = max(0.5, min(2.0, scale))
         new_w = int(self._base_width * self._scale)
         new_h = int(self._base_height * self._scale)
         self.resize(new_w, new_h)
+        logger.debug("Window scale set to %.1f (%dx%d)", self._scale, new_w, new_h)
 
     def paintEvent(self, event):
         """绘制当前帧到窗口。"""
@@ -131,6 +142,9 @@ class PetWindow(QMainWindow):
             self._dragging = False
             self.dragged.emit(self.pos().x(), self.pos().y())
             event.accept()
+            logger.debug(
+                "Window dragged to (%d, %d)", self.pos().x(), self.pos().y()
+            )
 
             self._event_bus.emit(
                 "window.mouse_released",
@@ -166,3 +180,4 @@ class PetWindow(QMainWindow):
             x = (screen_geo.width() - self.width()) // 2
             y = screen_geo.height() - self.height() - 50
             self.move(x, y)
+            logger.debug("Window centered at (%d, %d)", x, y)

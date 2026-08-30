@@ -9,6 +9,10 @@
 from pathlib import Path
 from PySide6.QtGui import QPixmap
 
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 # 动画名称 -> 文件名前缀的映射
 ANIMATION_MAP = {
     "idle": "cat_idle",
@@ -41,6 +45,7 @@ class SpriteLoader:
         self._cache: dict[str, list[QPixmap]] = {}
         self._single_cache: dict[str, QPixmap] = {}
         self._frame_size: dict[str, tuple[int, int]] = {}
+        logger.debug("SpriteLoader initialized (dir: %s)", self._assets_dir)
 
     def load_animation(self, name: str) -> list[QPixmap]:
         """加载一个动画的所有帧。
@@ -56,7 +61,7 @@ class SpriteLoader:
 
         prefix = ANIMATION_MAP.get(name)
         if prefix is None:
-            print(f"[SpriteLoader] Unknown animation: {name}")
+            logger.warning("Unknown animation: %s", name)
             return []
 
         frames = []
@@ -72,8 +77,8 @@ class SpriteLoader:
             self._cache[name] = frames
             w, h = frames[0].width(), frames[0].height()
             self._frame_size[name] = (w, h)
-            print(
-                f"[SpriteLoader] Loaded animation '{name}': {len(frames)} frames, {w}x{h}"
+            logger.info(
+                "Loaded animation '%s': %d frames, %dx%d", name, len(frames), w, h
             )
 
         return frames
@@ -89,17 +94,18 @@ class SpriteLoader:
 
         prefix = SINGLE_FRAME_MAP.get(name)
         if prefix is None:
-            print(f"[SpriteLoader] Unknown single frame: {name}")
+            logger.warning("Unknown single frame: %s", name)
             return QPixmap()
 
         file_path = self._assets_dir / f"{prefix}.png"
         if not file_path.exists():
-            print(f"[SpriteLoader] File not found: {file_path}")
+            logger.warning("File not found: %s", file_path)
             return QPixmap()
 
         pixmap = QPixmap(str(file_path))
         if not pixmap.isNull():
             self._single_cache[name] = pixmap
+            logger.debug("Loaded single frame '%s'", name)
 
         return pixmap
 
@@ -117,3 +123,4 @@ class SpriteLoader:
             self.load_animation(name)
         for name in SINGLE_FRAME_MAP:
             self.load_single(name)
+        logger.info("All sprites preloaded")

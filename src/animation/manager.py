@@ -12,6 +12,9 @@ from PySide6.QtGui import QPixmap
 
 from src.animation.sprites import SpriteLoader
 from src.core.event_bus import EventBus
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class AnimationManager(QObject):
@@ -44,6 +47,7 @@ class AnimationManager(QObject):
             "watching": 6,
             "sleep": 2,
         }
+        logger.debug("AnimationManager initialized")
 
     @property
     def current_animation(self) -> str:
@@ -75,11 +79,10 @@ class AnimationManager(QObject):
 
         frames = self._loader.load_animation(animation_name)
         if not frames:
-            print(
-                f"[AnimationManager] No frames for animation: {animation_name}"
-            )
+            logger.warning("No frames for animation: %s", animation_name)
             return
 
+        old_anim = self._current_animation
         self.stop()
 
         self._current_animation = animation_name
@@ -104,6 +107,11 @@ class AnimationManager(QObject):
             },
         )
 
+        if old_anim:
+            logger.debug("Animation changed: %s -> %s", old_anim, animation_name)
+        else:
+            logger.debug("Animation started: %s", animation_name)
+
     def stop(self):
         """停止当前动画。"""
         self._timer.stop()
@@ -122,11 +130,13 @@ class AnimationManager(QObject):
         """暂停动画。"""
         if self._playing:
             self._timer.stop()
+            logger.debug("Animation paused: %s", self._current_animation)
 
     def resume(self):
         """恢复动画。"""
         if self._playing and self._frames:
             self._timer.start(1000 // self._fps)
+            logger.debug("Animation resumed: %s", self._current_animation)
 
     def set_fps(self, fps: int):
         """动态修改帧率。"""
@@ -152,13 +162,15 @@ class AnimationManager(QObject):
                 )
             else:
                 self._current_frame = len(self._frames) - 1
+                anim_name = self._current_animation
                 self.stop()
                 self._event_bus.emit(
                     "animation.finished",
                     {
-                        "animation": self._current_animation,
+                        "animation": anim_name,
                     },
                 )
+                logger.debug("Animation finished: %s", anim_name)
                 return
 
         self.frame_changed.emit(self.current_frame)

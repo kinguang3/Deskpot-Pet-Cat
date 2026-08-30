@@ -6,11 +6,14 @@
 管理系统托盘图标和菜单。
 """
 
-from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
+from PySide6.QtWidgets import QSystemTrayIcon, QMenu
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor
 from PySide6.QtCore import Signal, QObject
 
 from src.core.event_bus import EventBus
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class SystemTray(QObject):
@@ -31,6 +34,7 @@ class SystemTray(QObject):
         self._setup_menu()
 
         self._tray.activated.connect(self._on_activated)
+        logger.debug("SystemTray initialized")
 
     def _setup_icon(self):
         """创建托盘图标。"""
@@ -69,10 +73,12 @@ class SystemTray(QObject):
     def show(self):
         """显示托盘图标。"""
         self._tray.show()
+        logger.debug("Tray icon shown")
 
     def hide(self):
         """隐藏托盘图标。"""
         self._tray.hide()
+        logger.debug("Tray icon hidden")
 
     def show_message(self, title: str, message: str):
         """显示托盘通知。"""

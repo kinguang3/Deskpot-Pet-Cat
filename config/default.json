@@ -1,4 +1,8 @@
 {
+  "app": {
+    "debug": false,
+    "version": "0.1.0"
+  },
   "window": {
     "size_scale": 1.0,
     "opacity": 0.95,

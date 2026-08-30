@@ -11,6 +11,9 @@ from typing import Callable
 from PySide6.QtCore import QObject, Signal
 
 from src.core.event_bus import EventBus
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class State:
@@ -55,6 +58,7 @@ class StateMachine(QObject):
         self._states: dict[str, State] = {}
         self._current: State = None
         self._previous_name: str = ""
+        logger.debug("StateMachine initialized")
 
     @property
     def current_state_name(self) -> str:
@@ -72,11 +76,12 @@ class StateMachine(QObject):
     def set_initial_state(self, name: str):
         """设置初始状态并进入。"""
         if name not in self._states:
-            print(f"[StateMachine] State not found: {name}")
+            logger.warning("State not found: %s", name)
             return
         self._current = self._states[name]
         self._current.enter()
         self._event_bus.emit("state.entered", {"state": name})
+        logger.info("Initial state set: %s", name)
 
     def transition_to(self, name: str) -> bool:
         """切换到指定状态。
@@ -85,7 +90,7 @@ class StateMachine(QObject):
             是否成功切换
         """
         if name not in self._states:
-            print(f"[StateMachine] State not found: {name}")
+            logger.warning("Invalid transition target: %s (state not found)", name)
             return False
 
         if self._current and self._current.name == name:
@@ -94,6 +99,9 @@ class StateMachine(QObject):
         target = self._states[name]
 
         if self._current and not self._current.can_transition_to(name):
+            logger.warning(
+                "Transition blocked: %s -> %s", self._current.name, name
+            )
             return False
 
         old_name = self._current.name if self._current else ""
@@ -113,6 +121,11 @@ class StateMachine(QObject):
                 "to": name,
             },
         )
+
+        if old_name:
+            logger.debug("State transition: %s -> %s", old_name, name)
+        else:
+            logger.debug("State entered: %s", name)
 
         return True
 

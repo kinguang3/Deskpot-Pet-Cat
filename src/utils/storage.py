@@ -8,6 +8,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class Storage:
     """简单的 JSON 文件存储。"""
@@ -21,6 +25,7 @@ class Storage:
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._cache: dict[str, Any] = {}
         self._loaded = False
+        logger.debug("Storage initialized (dir: %s)", self._data_dir)
 
     def _get_file_path(self, name: str) -> Path:
         return self._data_dir / f"{name}.json"
@@ -32,19 +37,29 @@ class Storage:
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     self._cache[name] = json.load(f)
-            except (json.JSONDecodeError, IOError):
+                logger.debug("Data loaded: %s", name)
+            except json.JSONDecodeError:
+                logger.error("Failed to parse data file: %s", path.name)
+                self._cache[name] = {}
+            except IOError:
+                logger.error("Failed to read data file: %s", path.name)
                 self._cache[name] = {}
         else:
             self._cache[name] = {}
+            logger.debug("Data file not found, using empty: %s", name)
         self._loaded = True
         return self._cache[name]
 
     def save(self, data: dict, name: str = "pet_data"):
         """保存数据。"""
         path = self._get_file_path(name)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-        self._cache[name] = data
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            self._cache[name] = data
+            logger.debug("Data saved: %s", name)
+        except IOError:
+            logger.exception("Failed to save data: %s", name)
 
     def get(self, key: str, default=None, name: str = "pet_data") -> Any:
         """获取单个值。"""

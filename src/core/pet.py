@@ -11,6 +11,9 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from src.core.event_bus import EventBus
 from src.core.window import PetWindow
 from src.animation.manager import AnimationManager
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class Pet(QObject):
@@ -45,6 +48,8 @@ class Pet(QObject):
         self._event_bus.on("window.mouse_entered", self._on_mouse_entered)
         self._event_bus.on("window.mouse_left", self._on_mouse_left)
 
+        logger.debug("Pet entity created: %s", self._name)
+
     @property
     def name(self) -> str:
         return self._name
@@ -63,6 +68,7 @@ class Pet(QObject):
         self._y = self._window.pos().y()
         self._anim.play("idle")
         self._event_bus.emit("pet.started", {"name": self._name})
+        logger.info("Pet started: %s", self._name)
 
     def move_to(self, x: int, y: int):
         """移动到指定位置。"""

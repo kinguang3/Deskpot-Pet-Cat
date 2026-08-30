@@ -18,6 +18,9 @@ from PySide6.QtCore import QTimer
 
 from src.behavior.state_machine import State
 from src.core.event_bus import EventBus
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class IdleState(State):
@@ -67,12 +70,8 @@ class WalkState(State):
         self._machine.anim.play(anim)
 
         # 通知行为管理器移动宠物
-        self._event_bus.emit(
-            "behavior.walk_started",
-            {
-                "direction": "right" if self._direction_right else "left",
-            },
-        )
+        direction = "right" if self._direction_right else "left"
+        self._event_bus.emit("behavior.walk_started", {"direction": direction})
 
         delay = random.randint(2000, 5000)
         self._timer.start(delay)

@@ -33,6 +33,9 @@ from src.dialogue.content import DialogueContent
 from src.ui.tray import SystemTray
 from src.ui.settings import SettingsPanel
 from src.utils.storage import Storage
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class App(QObject):
@@ -40,6 +43,7 @@ class App(QObject):
 
     def __init__(self):
         super().__init__()
+        logger.info("Application initializing...")
 
         # 基础设施
         self._config = ConfigManager()
@@ -91,6 +95,8 @@ class App(QObject):
         # 安装事件过滤器
         self._window.installEventFilter(self)
 
+        logger.info("Application initialized")
+
     def _setup_states(self):
         """注册并配置所有行为状态。"""
         self._state_machine.anim = self._anim_manager
@@ -130,21 +136,26 @@ class App(QObject):
 
     def start(self):
         """启动应用。"""
+        logger.info("Application starting...")
         # 加载配置
         self._apply_config()
 
         # 显示窗口
         self._window.show_center()
         self._window.show()
+        logger.info("Window shown")
 
         # 显示托盘
         self._tray.show()
+        logger.info("Tray icon shown")
 
         # 启动宠物
         self._pet.start()
 
         # 显示问候语
         QTimer.singleShot(1000, self._show_greeting)
+
+        logger.info("Application started")
 
     def _apply_config(self):
         """应用配置到各个模块。"""
@@ -158,10 +169,12 @@ class App(QObject):
         """显示窗口。"""
         self._window.show()
         self._window.show_center()
+        logger.debug("Window shown via tray")
 
     def _hide_window(self):
         """隐藏窗口。"""
         self._window.hide()
+        logger.debug("Window hidden via tray")
 
     def _show_settings(self):
         """显示设置面板。"""
@@ -170,9 +183,11 @@ class App(QObject):
             self._settings_panel.settings_changed.connect(self._apply_config)
         self._settings_panel.show()
         self._settings_panel.raise_()
+        logger.debug("Settings panel opened")
 
     def _quit(self):
         """退出应用。"""
+        logger.info("Application quitting...")
         self._state_machine.transition_to("idle")
         self._tray.hide()
         QApplication.instance().quit()
@@ -199,6 +214,7 @@ class App(QObject):
         self._dialogue_bubble.move(bubble_x, bubble_y)
         self._dialogue_bubble.show()
         self._dialogue_bubble.raise_()
+        logger.debug("Dialogue triggered: %s", text[:20])
 
     def _update_bubble_position(self):
         """若气泡可见，重新定位"""

@@ -6,9 +6,13 @@
 在宠物头顶显示对话气泡。
 """
 
-from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
+from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPainter, QColor, QFont, QPainterPath
+
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class DialogueBubble(QWidget):
@@ -30,6 +34,7 @@ class DialogueBubble(QWidget):
         self._opacity_effect = None
         self._fade_timer = QTimer(self)
         self._fade_timer.timeout.connect(self._on_fade)
+        logger.debug("DialogueBubble created")
 
     def _on_fade(self):
         """淡出动画完成后隐藏。"""
@@ -51,6 +56,7 @@ class DialogueBubble(QWidget):
         self.update()
 
         self._display_timer.start(duration)
+        logger.debug("Dialogue shown: %s", text[:20])
 
     def hide_bubble(self):
         """隐藏气泡。"""

@@ -11,6 +11,9 @@ import time
 from PySide6.QtCore import QObject
 
 from src.core.event_bus import EventBus
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class MouseInteraction(QObject):
@@ -32,6 +35,11 @@ class MouseInteraction(QObject):
         self._event_bus.on("window.double_clicked", self._on_double_clicked)
         self._event_bus.on("window.mouse_entered", self._on_mouse_entered)
         self._event_bus.on("window.mouse_left", self._on_mouse_left)
+
+        logger.debug(
+            "MouseInteraction initialized (inactive threshold: %ds)",
+            self._inactive_threshold,
+        )
 
     @property
     def seconds_since_interact(self) -> float:

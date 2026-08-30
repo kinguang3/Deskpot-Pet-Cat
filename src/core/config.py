@@ -8,8 +8,11 @@
 """
 
 import json
-import os
 from pathlib import Path
+
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ConfigManager:
@@ -41,12 +44,19 @@ class ConfigManager:
         if self._user_config_path.exists():
             user_cfg = self._load_json(self._user_config_path)
             self._deep_merge(self._data, user_cfg)
+            logger.info("User config loaded and merged")
+        else:
+            logger.debug("No user config found, using defaults")
 
     def _load_json(self, path: Path) -> dict:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
+        except FileNotFoundError:
+            logger.info("Config file not found: %s", path.name)
+            return {}
+        except json.JSONDecodeError:
+            logger.error("Failed to parse config file: %s", path.name)
             return {}
 
     def _deep_merge(self, base: dict, override: dict):
@@ -87,9 +97,13 @@ class ConfigManager:
 
     def save(self):
         """保存用户配置到 user.json。"""
-        self._config_dir.mkdir(parents=True, exist_ok=True)
-        with open(self._user_config_path, "w", encoding="utf-8") as f:
-            json.dump(self._data, f, indent=4, ensure_ascii=False)
+        try:
+            self._config_dir.mkdir(parents=True, exist_ok=True)
+            with open(self._user_config_path, "w", encoding="utf-8") as f:
+                json.dump(self._data, f, indent=4, ensure_ascii=False)
+            logger.debug("Settings saved")
+        except OSError:
+            logger.exception("Failed to save settings")
 
     def get_all(self) -> dict:
         """返回完整配置副本。"""

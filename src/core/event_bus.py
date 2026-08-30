@@ -10,6 +10,10 @@
 from collections import defaultdict
 from typing import Callable, Any
 
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class EventBus:
     """轻量级事件总线。"""
@@ -27,6 +31,7 @@ class EventBus:
         self._initialized = True
         self._listeners: dict[str, list[Callable]] = defaultdict(list)
         self._once_listeners: dict[str, list[Callable]] = defaultdict(list)
+        logger.debug("EventBus initialized")
 
     def on(self, event: str, callback: Callable):
         """监听事件。
@@ -68,12 +73,12 @@ class EventBus:
         for callback in self._listeners[event]:
             try:
                 callback(data)
-            except Exception as e:
-                print(f"[EventBus] Error in listener for '{event}': {e}")
+            except Exception:
+                logger.exception("Error in listener for '%s'", event)
 
         for callback in self._once_listeners[event]:
             try:
                 callback(data)
-            except Exception as e:
-                print(f"[EventBus] Error in once-listener for '{event}': {e}")
+            except Exception:
+                logger.exception("Error in once-listener for '%s'", event)
         self._once_listeners[event].clear()

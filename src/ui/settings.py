@@ -20,6 +20,9 @@ from PySide6.QtCore import Qt, Signal
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class SettingsPanel(QWidget):
@@ -41,6 +44,7 @@ class SettingsPanel(QWidget):
 
         self._setup_ui()
         self._load_settings()
+        logger.debug("SettingsPanel created")
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
