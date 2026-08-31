@@ -18,11 +18,13 @@
   "behavior": {
     "auto_move": true,
     "dialogue_enabled": true,
+    "auto_sleep_timeout": 300,
+    "debug_sleep_timeout": 10,
+    "idle_duration_min": 5000,
+    "idle_duration_max": 15000,
+    "walk_duration_min": 3000,
+    "walk_duration_max": 8000,
     "idle_to_walk_chance": 0.3,
-    "walk_duration_min": 2000,
-    "walk_duration_max": 5000,
-    "idle_duration_min": 3000,
-    "idle_duration_max": 8000,
     "sleep_after_inactive_ms": 300000
   },
   "pet": {

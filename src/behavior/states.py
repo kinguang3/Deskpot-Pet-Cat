@@ -6,6 +6,7 @@
 定义 Nina 的各种行为状态：
 - Idle: 待机
 - Walk: 行走
+- Stop: 停留张望
 - Sleep: 睡觉
 - Typing: 跟随用户打字
 - Watch: 注视/好奇
@@ -24,33 +25,17 @@ logger = get_logger(__name__)
 
 
 class IdleState(State):
-    """待机状态。Nina 静坐，随机决定下一步行为。"""
+    """待机状态。Nina 静坐，等待行为控制器决策。"""
 
     def __init__(self):
         super().__init__("idle", priority=0)
-        self._timer = QTimer()
-        self._timer.setSingleShot(True)
-        self._timer.timeout.connect(self._on_timeout)
         self._event_bus = EventBus()
 
     def enter(self):
         self._machine.anim.play("idle")
-        delay = random.randint(3000, 8000)
-        self._timer.start(delay)
 
     def exit(self):
-        self._timer.stop()
-
-    def _on_timeout(self):
-        if not self._machine:
-            return
-        roll = random.random()
-        if roll < 0.4:
-            self._machine.transition_to("walk")
-        elif roll < 0.55:
-            self._machine.transition_to("watch")
-        else:
-            self._machine.transition_to("idle")
+        pass
 
 
 class WalkState(State):
@@ -69,11 +54,11 @@ class WalkState(State):
         anim = "walk_right" if self._direction_right else "walk_left"
         self._machine.anim.play(anim)
 
-        # 通知行为管理器移动宠物
         direction = "right" if self._direction_right else "left"
         self._event_bus.emit("behavior.walk_started", {"direction": direction})
 
-        delay = random.randint(2000, 5000)
+        from src.behavior.controller import DEFAULT_WALK_MIN, DEFAULT_WALK_MAX
+        delay = random.randint(DEFAULT_WALK_MIN, DEFAULT_WALK_MAX)
         self._timer.start(delay)
 
     def exit(self):
@@ -85,19 +70,20 @@ class WalkState(State):
             self._machine.transition_to("idle")
 
 
-class SleepState(State):
-    """睡觉状态。Nina 进入睡眠。"""
+class StopState(State):
+    """停留状态。Nina 停下来张望，短暂亦留后回到 idle。"""
 
     def __init__(self):
-        super().__init__("sleep", priority=3)
+        super().__init__("stop", priority=1)
         self._timer = QTimer()
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)
 
     def enter(self):
-        self._machine.anim.play("sleep", loop=True)
-        # 睡觉持续较长时间
-        self._timer.start(30000)
+        self._machine.anim.play("idle")
+        from src.behavior.controller import DEFAULT_STOP_MIN, DEFAULT_STOP_MAX
+        delay = random.randint(DEFAULT_STOP_MIN, DEFAULT_STOP_MAX)
+        self._timer.start(delay)
 
     def exit(self):
         self._timer.stop()
@@ -106,8 +92,21 @@ class SleepState(State):
         if self._machine:
             self._machine.transition_to("idle")
 
+
+class SleepState(State):
+    """睡觉状态。Nina 进入睡眠，仅用户互动可唤醒。"""
+
+    def __init__(self):
+        super().__init__("sleep", priority=3)
+
+    def enter(self):
+        self._machine.anim.play("sleep", loop=True)
+
+    def exit(self):
+        pass
+
     def can_transition_to(self, target: str) -> bool:
-        # 被点击时可以醒来
+        # 仅允许被点击唤醒或回到 idle
         return target in ("idle", "clicked")
 
 
@@ -122,7 +121,9 @@ class WatchState(State):
 
     def enter(self):
         self._machine.anim.play("watching", loop=True)
-        self._timer.start(3000)
+        from src.behavior.controller import DEFAULT_WATCH_MIN, DEFAULT_WATCH_MAX
+        delay = random.randint(DEFAULT_WATCH_MIN, DEFAULT_WATCH_MAX)
+        self._timer.start(delay)
 
     def exit(self):
         self._timer.stop()
@@ -143,7 +144,6 @@ class TypingState(State):
 
     def enter(self):
         self._machine.anim.play("typing", loop=True)
-        # 打字状态持续到用户停止输入或超时
         self._timer.start(5000)
 
     def exit(self):
@@ -164,7 +164,6 @@ class ClickedState(State):
         self._timer.timeout.connect(self._on_timeout)
 
     def enter(self):
-        # 播放 watching 作为点击反应
         self._machine.anim.play("watching")
         self._timer.start(1500)
 

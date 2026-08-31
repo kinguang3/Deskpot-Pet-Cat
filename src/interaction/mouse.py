@@ -72,6 +72,7 @@ class MouseInteraction(QObject):
         self._event_bus.emit("interaction.double_click", data)
 
     def _on_mouse_entered(self, data: dict):
+        self._last_interact_time = time.time()
         self._event_bus.emit("interaction.hover_enter", data)
 
     def _on_mouse_left(self, data: dict):

@@ -21,12 +21,14 @@ from src.behavior.state_machine import StateMachine
 from src.behavior.states import (
     IdleState,
     WalkState,
+    StopState,
     SleepState,
     WatchState,
     TypingState,
     ClickedState,
     DraggedState,
 )
+from src.behavior.controller import BehaviorController
 from src.interaction.mouse import MouseInteraction
 from src.dialogue.bubble import DialogueBubble
 from src.dialogue.content import DialogueContent
@@ -70,6 +72,9 @@ class App(QObject):
         self._state_machine = StateMachine()
         self._setup_states()
 
+        # 行为控制器（集中管理自主行为 + 无互动睡眠）
+        self._behavior_controller = BehaviorController(self._state_machine)
+
         # 交互系统
         self._mouse_interaction = MouseInteraction()
 
@@ -79,12 +84,7 @@ class App(QObject):
         # 设置面板
         self._settings_panel = None  # 按需创建
 
-        # 空闲检测定时器
-        self._inactive_timer = QTimer(self)
-        self._inactive_timer.timeout.connect(self._check_inactive)
-        self._inactive_timer.start(5000)
-
-        # 对话定时器
+        # 对话定时器（仅用于随机对话气泡，与行为无关）
         self._dialogue_timer = QTimer(self)
         self._dialogue_timer.timeout.connect(self._random_dialogue)
         self._dialogue_timer.start(random.randint(30000, 60000))
@@ -103,6 +103,7 @@ class App(QObject):
 
         self._state_machine.add_state(IdleState())
         self._state_machine.add_state(WalkState())
+        self._state_machine.add_state(StopState())
         self._state_machine.add_state(SleepState())
         self._state_machine.add_state(WatchState())
         self._state_machine.add_state(TypingState())
@@ -129,7 +130,7 @@ class App(QObject):
         self._event_bus.on("interaction.hover_leave", self._on_hover_leave)
 
         # 窗口拖动事件
-        self._event_bus.on("window.mouse_released", self._on_window_moved)
+        self._event_bus.on("window.mouse_pressed", self._on_window_mouse_pressed)
 
         # 状态变化事件
         self._event_bus.on("state.changed", self._on_state_changed)
@@ -152,6 +153,9 @@ class App(QObject):
         # 启动宠物
         self._pet.start()
 
+        # 启动行为控制器
+        self._behavior_controller.start()
+
         # 显示问候语
         QTimer.singleShot(1000, self._show_greeting)
 
@@ -169,7 +173,7 @@ class App(QObject):
         """根据预览设置实时更新桌宠窗口"""
         # 大小缩放
         scale = settings.get("window.size_scale", 1.0)
-        self._window.set_scale(scale)  # 假设你有一个调整大小的函数
+        self._window.set_scale(scale)
         # 透明度
         opacity = settings.get("window.opacity", 0.95)
         self._window.setWindowOpacity(opacity)
@@ -209,6 +213,7 @@ class App(QObject):
     def _quit(self):
         """退出应用。"""
         logger.info("Application quitting...")
+        self._behavior_controller.stop()
         self._state_machine.transition_to("idle")
         self._tray.hide()
         QApplication.instance().quit()
@@ -261,41 +266,44 @@ class App(QObject):
         interval = random.randint(30000, 60000)
         self._dialogue_timer.start(interval)
 
-    def _check_inactive(self):
-        """检查是否长时间无交互。"""
-        if self._mouse_interaction.check_inactive():
-            if not self._state_machine.is_state("sleep"):
-                self._state_machine.transition_to("sleep")
-                if self._config.get("behavior.dialogue_enabled", True):
-                    text = self._dialogue_content.get_sleep_line()
-                    self._show_dialogue(text)
-
     # ─── 事件回调 ───
 
     def _on_pet_click(self, data: dict):
         """处理单击宠物。"""
-        self._state_machine.transition_to("clicked")
-        if self._config.get("behavior.dialogue_enabled", True):
-            text = self._dialogue_content.get_click_line()
-            self._show_dialogue(text)
+        # BehaviorController 已处理睡眠唤醒逻辑，此处仅播放对话
+        current = self._state_machine.current_state_name
+        if current == "sleep":
+            # 唤醒后显示问候
+            if self._config.get("behavior.dialogue_enabled", True):
+                text = self._dialogue_content.get_click_line()
+                self._show_dialogue(text)
+        elif current != "dragged":
+            if self._config.get("behavior.dialogue_enabled", True):
+                text = self._dialogue_content.get_click_line()
+                self._show_dialogue(text)
 
     def _on_pet_double_click(self, data: dict):
         """处理双击宠物。"""
-        # 双击时随机播放一个特殊动画
-        anim = random.choice(["typing", "watching"])
-        self._anim_manager.play(anim)
-        if self._config.get("behavior.dialogue_enabled", True):
-            text = self._dialogue_content.get_click_line()
-            self._show_dialogue(text)
+        current = self._state_machine.current_state_name
+        if current not in ("sleep", "dragged"):
+            anim = random.choice(["typing", "watching"])
+            self._anim_manager.play(anim)
+            if self._config.get("behavior.dialogue_enabled", True):
+                text = self._dialogue_content.get_click_line()
+                self._show_dialogue(text)
 
     def _on_pet_right_click(self, data: dict):
         """处理右键宠物。"""
+        if self._state_machine.is_state("sleep"):
+            return
         if self._config.get("behavior.dialogue_enabled", True):
             text = self._dialogue_content.get_hover_line()
             self._show_dialogue(text)
 
     def _on_hover_enter(self, data: dict):
         """鼠标悬停进入。"""
+        if self._state_machine.is_state("sleep"):
+            return
         if random.random() < 0.3:
             if self._config.get("behavior.dialogue_enabled", True):
                 text = self._dialogue_content.get_hover_line()
@@ -305,14 +313,17 @@ class App(QObject):
         """鼠标悬停离开。"""
         pass
 
-    def _on_window_moved(self, data: dict):
-        """窗口被拖动后。"""
-        if self._state_machine.is_state("dragged"):
-            self._state_machine.transition_to("idle")
+    def _on_window_mouse_pressed(self, data: dict):
+        """窗口鼠标按下 → 检查是否为拖动开始。"""
+        if not self._state_machine.is_state("dragged"):
+            self._behavior_controller.on_drag_start()
 
     def _on_state_changed(self, data: dict):
         """状态变化回调。"""
-        pass
+        old = data.get("from", "")
+        new = data.get("to", "")
+        if old or new:
+            logger.info("State: %s -> %s", old or "(start)", new)
 
     def eventFilter(self, watched, event):
         """事件过滤器"""
