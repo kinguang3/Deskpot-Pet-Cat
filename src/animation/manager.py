@@ -107,11 +107,6 @@ class AnimationManager(QObject):
             },
         )
 
-        if old_anim:
-            logger.debug("Animation changed: %s -> %s", old_anim, animation_name)
-        else:
-            logger.debug("Animation started: %s", animation_name)
-
     def stop(self):
         """停止当前动画。"""
         self._timer.stop()

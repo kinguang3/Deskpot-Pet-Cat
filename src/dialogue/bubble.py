@@ -56,7 +56,6 @@ class DialogueBubble(QWidget):
         self.update()
 
         self._display_timer.start(duration)
-        logger.debug("Dialogue shown: %s", text[:20])
 
     def hide_bubble(self):
         """隐藏气泡。"""

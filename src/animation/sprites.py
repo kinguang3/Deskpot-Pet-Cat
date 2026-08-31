@@ -77,9 +77,6 @@ class SpriteLoader:
             self._cache[name] = frames
             w, h = frames[0].width(), frames[0].height()
             self._frame_size[name] = (w, h)
-            logger.info(
-                "Loaded animation '%s': %d frames, %dx%d", name, len(frames), w, h
-            )
 
         return frames
 

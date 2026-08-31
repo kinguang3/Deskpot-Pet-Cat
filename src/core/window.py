@@ -151,9 +151,6 @@ class PetWindow(QMainWindow):
             self._dragging = False
             self.dragged.emit(self.pos().x(), self.pos().y())
             event.accept()
-            logger.debug(
-                "Window dragged to (%d, %d)", self.pos().x(), self.pos().y()
-            )
 
             self._event_bus.emit(
                 "window.mouse_released",

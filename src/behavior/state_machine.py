@@ -90,7 +90,9 @@ class StateMachine(QObject):
             是否成功切换
         """
         if name not in self._states:
-            logger.warning("Invalid transition target: %s (state not found)", name)
+            logger.warning(
+                "Invalid transition target: %s (state not found)", name
+            )
             return False
 
         if self._current and self._current.name == name:
@@ -121,12 +123,6 @@ class StateMachine(QObject):
                 "to": name,
             },
         )
-
-        if old_name:
-            logger.debug("State transition: %s -> %s", old_name, name)
-        else:
-            logger.debug("State entered: %s", name)
-
         return True
 
     def update(self, dt: float):

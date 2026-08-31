@@ -145,7 +145,7 @@ def setup_logger(
     log_prefix: str = DEFAULT_LOG_PREFIX,
     max_log_files: int = DEFAULT_MAX_FILES,
     console_level: int = logging.DEBUG,
-    file_level: int = logging.DEBUG,
+    file_level: int = logging.INFO,
     filter_level: int = None,
     filter_mode: str = "above",
 ) -> None:

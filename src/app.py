@@ -130,7 +130,9 @@ class App(QObject):
         self._event_bus.on("interaction.hover_leave", self._on_hover_leave)
 
         # 窗口拖动事件
-        self._event_bus.on("window.mouse_pressed", self._on_window_mouse_pressed)
+        self._event_bus.on(
+            "window.mouse_pressed", self._on_window_mouse_pressed
+        )
 
         # 状态变化事件
         self._event_bus.on("state.changed", self._on_state_changed)
@@ -240,7 +242,6 @@ class App(QObject):
         self._dialogue_bubble.move(bubble_x, bubble_y)
         self._dialogue_bubble.show()
         self._dialogue_bubble.raise_()
-        logger.debug("Dialogue triggered: %s", text[:20])
 
     def _update_bubble_position(self):
         """若气泡可见，重新定位"""
@@ -322,8 +323,6 @@ class App(QObject):
         """状态变化回调。"""
         old = data.get("from", "")
         new = data.get("to", "")
-        if old or new:
-            logger.info("State: %s -> %s", old or "(start)", new)
 
     def eventFilter(self, watched, event):
         """事件过滤器"""
