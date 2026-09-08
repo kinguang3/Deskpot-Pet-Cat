@@ -172,7 +172,7 @@ class BehaviorController(QObject):
         elif new_state == "watch":
             delay = random.randint(DEFAULT_WATCH_MIN, DEFAULT_WATCH_MAX)
             self._behavior_timer.start(delay)
-        elif new_state in ("sleep", "dragged", "clicked"):
+        elif new_state in ("sleep", "dragged", "clicked", "happy"):
             self._behavior_timer.stop()
 
     # ─── 无互动 → 睡眠 ───
@@ -261,6 +261,11 @@ class BehaviorController(QObject):
         """拖动开始 → 进入 dragged，暂停自主行为。"""
         self.refresh_interaction()
         self._behavior_timer.stop()
+
+        # 如果在睡觉，先唤醒
+        if self._sm.is_state("sleep"):
+            self._sm.transition_to("idle")
+
         self._sm.transition_to("dragged")
 
     def get_debug_info(self) -> dict:

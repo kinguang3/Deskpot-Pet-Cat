@@ -27,6 +27,7 @@ from src.behavior.states import (
     TypingState,
     ClickedState,
     DraggedState,
+    HappyState,
 )
 from src.behavior.controller import BehaviorController
 from src.behavior.emotion import EmotionSystem
@@ -121,6 +122,7 @@ class App(QObject):
         self._state_machine.add_state(TypingState())
         self._state_machine.add_state(ClickedState())
         self._state_machine.add_state(DraggedState())
+        self._state_machine.add_state(HappyState())
 
         self._state_machine.set_initial_state("idle")
 
