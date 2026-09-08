@@ -32,7 +32,6 @@ from src.behavior.states import (
 from src.behavior.controller import BehaviorController
 from src.behavior.emotion import EmotionSystem
 from src.behavior.memory import Memory
-from src.behavior.micro import MicroBehavior
 from src.interaction.mouse import MouseInteraction
 from src.dialogue.bubble import DialogueBubble
 from src.dialogue.content import DialogueContent
@@ -84,9 +83,6 @@ class App(QObject):
 
         # 记忆系统（持久化互动数据）
         self._memory = Memory(self._storage)
-
-        # 微行为系统（短暂小动作）
-        self._micro_behavior = MicroBehavior(self._anim_manager)
 
         # 交互系统
         self._mouse_interaction = MouseInteraction()
@@ -177,9 +173,6 @@ class App(QObject):
 
         # 启动情感系统
         self._emotion_system.start()
-
-        # 启动微行为系统
-        self._micro_behavior.start()
 
         # 显示问候语
         QTimer.singleShot(1000, self._show_greeting)

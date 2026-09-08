@@ -78,15 +78,9 @@ class AnimationManager(QObject):
             return
 
         frames = self._loader.load_animation(animation_name)
-
-        # 如果多帧动画不存在，尝试加载单帧图片
         if not frames:
-            single = self._loader.load_single(animation_name)
-            if not single.isNull():
-                frames = [single]
-            else:
-                logger.warning("No frames for animation: %s", animation_name)
-                return
+            logger.warning("No frames for animation: %s", animation_name)
+            return
 
         old_anim = self._current_animation
         self.stop()
