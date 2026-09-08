@@ -11,15 +11,17 @@ import random
 import time
 
 from PySide6.QtCore import QTimer, QObject
+from PySide6.QtGui import QCursor
 
 from src.behavior.state_machine import StateMachine
+from src.behavior.scheduler import BehaviorScheduler
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 行为参数（从 config 读取，此处为默认值）
+# 行为参数默认值
 DEFAULT_AUTO_SLEEP_TIMEOUT = 300  # 5 分钟
 DEFAULT_CHECK_INTERVAL = 1000  # 1 秒
 DEFAULT_IDLE_MIN = 5000
@@ -36,7 +38,7 @@ class BehaviorController(QObject):
     """集中式行为控制器。
 
     职责：
-    - 管理自主行为决策（idle → walk/stop/watch → idle）
+    - 通过 BehaviorScheduler 加权选择下一个行为
     - 跟踪用户最后互动时间
     - 超时自动进入 sleep
     - sleep 时阻止自主行为
@@ -48,6 +50,9 @@ class BehaviorController(QObject):
         self._sm = state_machine
         self._event_bus = EventBus()
         self._config = ConfigManager()
+
+        # 行为调度器（加权选择）
+        self._scheduler = BehaviorScheduler()
 
         # 互动追踪
         self._last_interact_time: float = time.time()
@@ -75,6 +80,16 @@ class BehaviorController(QObject):
         self._inactivity_timer = QTimer(self)
         self._inactivity_timer.timeout.connect(self._on_inactivity_check)
 
+        # 鼠标感知定时器（每2秒检查一次鼠标位置）
+        self._mouse_awareness_timer = QTimer(self)
+        self._mouse_awareness_timer.timeout.connect(self._on_mouse_awareness_check)
+        self._mouse_awareness_radius = 150  # 像素，鼠标接近范围
+        self._mouse_awareness_cooldown = 0  # 上次触发时间
+        self._mouse_awareness_min_interval = 10  # 最小触发间隔（秒）
+
+        # 窗口引用（用于获取位置，由 App 设置）
+        self._window = None
+
         # 连接事件
         self._event_bus.on("interaction.single_click", self._on_user_interaction)
         self._event_bus.on("interaction.double_click", self._on_user_interaction)
@@ -89,6 +104,11 @@ class BehaviorController(QObject):
         )
 
     @property
+    def scheduler(self) -> BehaviorScheduler:
+        """获取行为调度器（供 EmotionSystem 注入状态）。"""
+        return self._scheduler
+
+    @property
     def seconds_since_interact(self) -> float:
         return time.time() - self._last_interact_time
 
@@ -96,7 +116,12 @@ class BehaviorController(QObject):
         """启动行为控制。"""
         self._behavior_timer.start(DEFAULT_CHECK_INTERVAL)
         self._inactivity_timer.start(DEFAULT_CHECK_INTERVAL)
+        self._mouse_awareness_timer.start(2000)  # 每2秒检查鼠标
         logger.info("BehaviorController started")
+
+    def set_window(self, window):
+        """设置窗口引用（用于鼠标感知）。"""
+        self._window = window
 
     def stop(self):
         """停止所有计时器。"""
@@ -107,35 +132,38 @@ class BehaviorController(QObject):
         """刷新最后互动时间。"""
         self._last_interact_time = time.time()
 
-    # ─── 自主行为决策 ───
+    # ─── 自主行为决策（使用 Scheduler） ───
 
     def _on_behavior_tick(self):
         """自主行为决策（仅在 idle 状态触发）。"""
         if not self._sm.is_state("idle"):
             return
 
-        roll = random.random()
-        if roll < 0.25:
-            self._sm.transition_to("walk")
-        elif roll < 0.40:
-            self._sm.transition_to("stop")
-        elif roll < 0.55:
-            self._sm.transition_to("watch")
-        else:
-            # 保持 idle，重新设定延迟
+        chosen = self._scheduler.choose_behavior("idle")
+
+        if chosen is None:
+            # 没有可选行为，保持 idle
             delay = random.randint(self._idle_min, self._idle_max)
             self._behavior_timer.start(delay)
+            return
+
+        if chosen == "idle":
+            # scheduler 建议继续 idle
+            delay = random.randint(self._idle_min, self._idle_max)
+            self._behavior_timer.start(delay)
+            return
+
+        # 切换到选择的行为
+        self._sm.transition_to(chosen)
 
     def _on_state_changed(self, data: dict):
         """状态变化后重新安排自主行为计时器。"""
         new_state = data.get("to", "")
 
-        # 自主行为只在 idle 状态触发
         if new_state == "idle":
             delay = random.randint(self._idle_min, self._idle_max)
             self._behavior_timer.start(delay)
         elif new_state == "stop":
-            # stop 结束后回到 idle
             delay = random.randint(DEFAULT_STOP_MIN, DEFAULT_STOP_MAX)
             self._behavior_timer.start(delay)
         elif new_state == "walk":
@@ -145,7 +173,6 @@ class BehaviorController(QObject):
             delay = random.randint(DEFAULT_WATCH_MIN, DEFAULT_WATCH_MAX)
             self._behavior_timer.start(delay)
         elif new_state in ("sleep", "dragged", "clicked"):
-            # 这些状态下暂停自主行为
             self._behavior_timer.stop()
 
     # ─── 无互动 → 睡眠 ───
@@ -153,8 +180,6 @@ class BehaviorController(QObject):
     def _on_inactivity_check(self):
         """定期检查是否超时进入睡眠。"""
         current = self._sm.current_state_name
-
-        # 已经在 sleep 或 dragged 不需要检查
         if current in ("sleep", "dragged"):
             return
 
@@ -166,6 +191,45 @@ class BehaviorController(QObject):
             )
             self._sm.transition_to("sleep")
 
+    # ─── 鼠标感知 ───
+
+    def _on_mouse_awareness_check(self):
+        """检查鼠标是否接近 Nina，触发反应。"""
+        if self._window is None:
+            return
+
+        current = self._sm.current_state_name
+
+        # 已经在交互状态或睡着，不触发
+        if current in ("sleep", "dragged", "clicked", "walk"):
+            return
+
+        # 冷却检查
+        now = time.time()
+        if now - self._mouse_awareness_cooldown < self._mouse_awareness_min_interval:
+            return
+
+        # 获取鼠标和窗口位置
+        mouse_pos = QCursor.pos()
+        window_center = self._window.mapToGlobal(
+            self._window.rect().center()
+        )
+
+        # 计算距离
+        dx = mouse_pos.x() - window_center.x()
+        dy = mouse_pos.y() - window_center.y()
+        distance = (dx * dx + dy * dy) ** 0.5
+
+        # 鼠标在接近范围内
+        if distance < self._mouse_awareness_radius:
+            # 有概率触发 watch 反应
+            if random.random() < 0.4:
+                self._sm.transition_to("watch")
+                self._mouse_awareness_cooldown = now
+                logger.debug(
+                    "Mouse awareness triggered (distance: %.0fpx)", distance
+                )
+
     # ─── 用户互动处理 ───
 
     def _on_user_interaction(self, data: dict):
@@ -174,13 +238,11 @@ class BehaviorController(QObject):
 
         current = self._sm.current_state_name
 
-        # sleep 状态下点击 → 唤醒
         if current == "sleep":
             self._sm.transition_to("idle")
             logger.debug("User clicked sleeping Nina -> wake")
             return
 
-        # 其他状态 → 进入 clicked 反应
         if current not in ("dragged", "clicked"):
             self._sm.transition_to("clicked")
 
@@ -200,3 +262,13 @@ class BehaviorController(QObject):
         self.refresh_interaction()
         self._behavior_timer.stop()
         self._sm.transition_to("dragged")
+
+    def get_debug_info(self) -> dict:
+        """获取调试信息。"""
+        return {
+            "state": self._sm.current_state_name,
+            "seconds_since_interact": round(self.seconds_since_interact, 1),
+            "auto_sleep_timeout": self._auto_sleep_timeout,
+            "scheduler_weights": self._scheduler.get_weights_debug(),
+            "scheduler_history": self._scheduler.get_history(),
+        }

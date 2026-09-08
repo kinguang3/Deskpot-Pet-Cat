@@ -29,6 +29,9 @@ from src.behavior.states import (
     DraggedState,
 )
 from src.behavior.controller import BehaviorController
+from src.behavior.emotion import EmotionSystem
+from src.behavior.memory import Memory
+from src.behavior.micro import MicroBehavior
 from src.interaction.mouse import MouseInteraction
 from src.dialogue.bubble import DialogueBubble
 from src.dialogue.content import DialogueContent
@@ -74,6 +77,15 @@ class App(QObject):
 
         # 行为控制器（集中管理自主行为 + 无互动睡眠）
         self._behavior_controller = BehaviorController(self._state_machine)
+
+        # 情感系统（管理内部状态，影响行为权重）
+        self._emotion_system = EmotionSystem(self._behavior_controller.scheduler)
+
+        # 记忆系统（持久化互动数据）
+        self._memory = Memory(self._storage)
+
+        # 微行为系统（短暂小动作）
+        self._micro_behavior = MicroBehavior(self._anim_manager)
 
         # 交互系统
         self._mouse_interaction = MouseInteraction()
@@ -155,8 +167,17 @@ class App(QObject):
         # 启动宠物
         self._pet.start()
 
+        # 设置窗口引用（用于鼠标感知）
+        self._behavior_controller.set_window(self._window)
+
         # 启动行为控制器
         self._behavior_controller.start()
+
+        # 启动情感系统
+        self._emotion_system.start()
+
+        # 启动微行为系统
+        self._micro_behavior.start()
 
         # 显示问候语
         QTimer.singleShot(1000, self._show_greeting)
@@ -216,6 +237,8 @@ class App(QObject):
         """退出应用。"""
         logger.info("Application quitting...")
         self._behavior_controller.stop()
+        self._emotion_system.stop()
+        self._memory.save()
         self._state_machine.transition_to("idle")
         self._tray.hide()
         QApplication.instance().quit()
@@ -271,14 +294,20 @@ class App(QObject):
 
     def _on_pet_click(self, data: dict):
         """处理单击宠物。"""
-        # BehaviorController 已处理睡眠唤醒逻辑，此处仅播放对话
+        # 记录互动
+        self._memory.record_interaction()
+
         current = self._state_machine.current_state_name
         if current == "sleep":
-            # 唤醒后显示问候
+            # 唤醒 → 情感变化 + 记录
+            self._emotion_system.on_wake()
+            self._memory.record_wake()
             if self._config.get("behavior.dialogue_enabled", True):
-                text = self._dialogue_content.get_click_line()
+                text = self._dialogue_content.get_wake_line()
                 self._show_dialogue(text)
         elif current != "dragged":
+            # 点击 → 快乐↑ 依恋↑
+            self._emotion_system.on_user_click()
             if self._config.get("behavior.dialogue_enabled", True):
                 text = self._dialogue_content.get_click_line()
                 self._show_dialogue(text)
@@ -305,6 +334,9 @@ class App(QObject):
         """鼠标悬停进入。"""
         if self._state_machine.is_state("sleep"):
             return
+        # 悬停 → 好奇心小幅上升 + 记录互动
+        self._emotion_system.on_user_hover()
+        self._memory.record_interaction()
         if random.random() < 0.3:
             if self._config.get("behavior.dialogue_enabled", True):
                 text = self._dialogue_content.get_hover_line()
@@ -317,6 +349,8 @@ class App(QObject):
     def _on_window_mouse_pressed(self, data: dict):
         """窗口鼠标按下 → 检查是否为拖动开始。"""
         if not self._state_machine.is_state("dragged"):
+            # 拖动 → 快乐小幅下降
+            self._emotion_system.on_user_drag()
             self._behavior_controller.on_drag_start()
 
     def _on_state_changed(self, data: dict):
