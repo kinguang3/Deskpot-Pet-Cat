@@ -20,10 +20,10 @@ logger = get_logger(__name__)
 DEFAULT_WAKE_PHRASE = "嘿"
 
 # 可接受的唤醒词变体（用于匹配）
+# Vosk 中文模型可能输出同音字
 WAKE_VARIANTS = [
     "嘿",
-    "hey",
-    "hi",
+    "黑",
     "嗨",
 ]
 
