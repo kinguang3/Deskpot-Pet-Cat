@@ -11,7 +11,7 @@ import threading
 from collections import defaultdict
 from typing import Callable, Any
 
-from PySide6.QtCore import QTimer, QThread, QMetaObject, Q_ARG, Qt, Slot
+from PySide6.QtCore import QObject, QTimer, QThread, QMetaObject, Q_ARG, Qt, Slot
 
 from src.utils.logger import get_logger
 
