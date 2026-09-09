@@ -259,12 +259,7 @@ class BehaviorController(QObject):
     # ─── 语音唤醒 ───
 
     def _on_voice_wake(self, data: dict):
-        """语音唤醒事件 → 调度到主线程执行 wake 状态切换。"""
-        # 语音检测在后台线程，Qt 操作必须在主线程
-        QTimer.singleShot(0, self._do_voice_wake)
-
-    def _do_voice_wake(self):
-        """在主线程执行语音唤醒。"""
+        """语音唤醒事件 → 进入 wake 状态。"""
         self.refresh_interaction()
 
         current = self._sm.current_state_name

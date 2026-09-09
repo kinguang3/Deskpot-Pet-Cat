@@ -7,8 +7,11 @@
 支持事件发送、监听、一次性监听。
 """
 
+import threading
 from collections import defaultdict
 from typing import Callable, Any
+
+from PySide6.QtCore import QTimer, QThread
 
 from src.utils.logger import get_logger
 
@@ -16,13 +19,15 @@ logger = get_logger(__name__)
 
 
 class EventBus:
-    """轻量级事件总线。"""
+    """轻量级事件总线，支持跨线程安全调用。"""
 
     _instance = None
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            _instance = super().__new__(cls)
+            _instance._main_thread_id = threading.main_thread().ident
+            cls._instance = _instance
         return cls._instance
 
     def __init__(self):
@@ -63,13 +68,24 @@ class EventBus:
     def emit(self, event: str, data: dict = None):
         """发送事件。
 
-        Args:
-            event: 事件名称
-            data: 事件数据，传递给所有监听器
+        如果当前不在主线程，会调度到主线程执行回调。
         """
         if data is None:
             data = {}
 
+        # 检查是否在主线程
+        current_thread = threading.current_thread().ident
+        is_main = current_thread == self._main_thread_id
+
+        if is_main:
+            # 主线程直接执行
+            self._call_listeners(event, data)
+        else:
+            # 子线程调度到主线程
+            QTimer.singleShot(0, lambda e=event, d=data: self._call_listeners(e, d))
+
+    def _call_listeners(self, event: str, data: dict):
+        """实际执行回调（应在主线程调用）。"""
         for callback in self._listeners[event]:
             try:
                 callback(data)
