@@ -17,16 +17,14 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # 默认唤醒词
-DEFAULT_WAKE_PHRASE = "嘿nina"
+DEFAULT_WAKE_PHRASE = "嘿"
 
 # 可接受的唤醒词变体（用于匹配）
 WAKE_VARIANTS = [
-    "嘿nina",
-    "嘿 妮娜",
-    "嘿妮娜",
-    "嘿nina",
-    "hey nina",
-    "heynina",
+    "嘿",
+    "hey",
+    "hi",
+    "嗨",
 ]
 
 
