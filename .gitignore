@@ -35,6 +35,10 @@ data/
 # Logs
 logs/
 *.log
+VOICE_WAKE_DEBUG_LOG.md
 
 # Models (downloaded, not source)
 models/
+
+# Debug docs
+VOICE_WAKE_DEBUG_LOG.md
