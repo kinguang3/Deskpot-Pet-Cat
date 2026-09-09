@@ -11,14 +11,14 @@ import threading
 from collections import defaultdict
 from typing import Callable, Any
 
-from PySide6.QtCore import QTimer, QThread
+from PySide6.QtCore import QTimer, QThread, QMetaObject, Q_ARG, Qt, Slot
 
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class EventBus:
+class EventBus(QObject):
     """轻量级事件总线，支持跨线程安全调用。"""
 
     _instance = None
@@ -33,6 +33,7 @@ class EventBus:
     def __init__(self):
         if hasattr(self, "_initialized"):
             return
+        super().__init__()
         self._initialized = True
         self._listeners: dict[str, list[Callable]] = defaultdict(list)
         self._once_listeners: dict[str, list[Callable]] = defaultdict(list)
@@ -89,10 +90,17 @@ class EventBus:
             # 主线程直接执行
             self._call_listeners(event, data)
         else:
-            # 子线程调度到主线程
-            logger.debug("EventBus.emit [%s] scheduling to main thread", event)
-            QTimer.singleShot(0, lambda e=event, d=data: self._call_listeners(e, d))
+            # 子线程用 QMetaObject.invokeMethod 调度到主线程
+            logger.info("EventBus.emit [%s] scheduling to main thread via QMetaObject", event)
+            QMetaObject.invokeMethod(
+                self,
+                "_call_listeners",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(str, event),
+                Q_ARG(dict, data),
+            )
 
+    @Slot(str, dict)
     def _call_listeners(self, event: str, data: dict):
         """实际执行回调（应在主线程调用）。"""
         logger.info(
