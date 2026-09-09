@@ -77,11 +77,20 @@ class EventBus:
         current_thread = threading.current_thread().ident
         is_main = current_thread == self._main_thread_id
 
+        logger.debug(
+            "EventBus.emit [%s] thread=%s is_main=%s listeners=%d",
+            event,
+            threading.current_thread().name,
+            is_main,
+            len(self._listeners[event]),
+        )
+
         if is_main:
             # 主线程直接执行
             self._call_listeners(event, data)
         else:
             # 子线程调度到主线程
+            logger.debug("EventBus.emit [%s] scheduling to main thread", event)
             QTimer.singleShot(0, lambda e=event, d=data: self._call_listeners(e, d))
 
     def _call_listeners(self, event: str, data: dict):
