@@ -5,13 +5,15 @@
 
 模块间通过事件通信，避免直接引用。
 支持事件发送、监听、一次性监听。
+跨线程安全：子线程 emit 的事件通过队列 + QTimer 调度到主线程执行。
 """
 
+import queue
 import threading
 from collections import defaultdict
-from typing import Callable, Any
+from typing import Callable
 
-from PySide6.QtCore import QObject, QTimer, QThread, QMetaObject, Q_ARG, Qt, Slot
+from PySide6.QtCore import QTimer, QObject
 
 from src.utils.logger import get_logger
 
@@ -25,9 +27,9 @@ class EventBus(QObject):
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            _instance = super().__new__(cls)
-            _instance._main_thread_id = threading.main_thread().ident
-            cls._instance = _instance
+            obj = super().__new__(cls)
+            obj._main_thread_id = threading.main_thread().ident
+            cls._instance = obj
         return cls._instance
 
     def __init__(self):
@@ -37,15 +39,17 @@ class EventBus(QObject):
         self._initialized = True
         self._listeners: dict[str, list[Callable]] = defaultdict(list)
         self._once_listeners: dict[str, list[Callable]] = defaultdict(list)
+        self._pending: queue.Queue = queue.Queue()
+
+        # 主线程定时器，每 10ms 检查队列
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(self._drain_queue)
+        self._poll_timer.start(10)
+
         logger.debug("EventBus initialized")
 
     def on(self, event: str, callback: Callable):
-        """监听事件。
-
-        Args:
-            event: 事件名称
-            callback: 回调函数，接收 (data: dict) 参数
-        """
+        """监听事件。"""
         self._listeners[event].append(callback)
 
     def once(self, event: str, callback: Callable):
@@ -53,10 +57,7 @@ class EventBus(QObject):
         self._once_listeners[event].append(callback)
 
     def off(self, event: str, callback: Callable = None):
-        """取消监听。
-
-        如果不传 callback，移除该事件的所有监听器。
-        """
+        """取消监听。"""
         if callback is None:
             self._listeners[event].clear()
             self._once_listeners[event].clear()
@@ -69,45 +70,30 @@ class EventBus(QObject):
     def emit(self, event: str, data: dict = None):
         """发送事件。
 
-        如果当前不在主线程，会调度到主线程执行回调。
+        主线程直接执行；子线程放入队列由 QTimer 调度到主线程。
         """
         if data is None:
             data = {}
 
-        # 检查是否在主线程
         current_thread = threading.current_thread().ident
         is_main = current_thread == self._main_thread_id
 
-        logger.info(
-            "EventBus.emit [%s] thread=%s is_main=%s listeners=%d",
-            event,
-            threading.current_thread().name,
-            is_main,
-            len(self._listeners[event]),
-        )
-
         if is_main:
-            # 主线程直接执行
             self._call_listeners(event, data)
         else:
-            # 子线程用 QMetaObject.invokeMethod 调度到主线程
-            logger.info("EventBus.emit [%s] scheduling to main thread via QMetaObject", event)
-            QMetaObject.invokeMethod(
-                self,
-                "_call_listeners",
-                Qt.ConnectionType.QueuedConnection,
-                Q_ARG(str, event),
-                Q_ARG(dict, data),
-            )
+            self._pending.put((event, data))
 
-    @Slot(str, dict)
+    def _drain_queue(self):
+        """从队列取出所有待处理事件并执行（主线程 QTimer 回调）。"""
+        while not self._pending.empty():
+            try:
+                event, data = self._pending.get_nowait()
+            except queue.Empty:
+                break
+            self._call_listeners(event, data)
+
     def _call_listeners(self, event: str, data: dict):
-        """实际执行回调（应在主线程调用）。"""
-        logger.info(
-            "EventBus._call_listeners [%s] callbacks=%d",
-            event,
-            len(self._listeners[event]),
-        )
+        """实际执行回调（主线程）。"""
         for callback in self._listeners[event]:
             try:
                 callback(data)
