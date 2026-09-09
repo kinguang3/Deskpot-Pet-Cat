@@ -71,6 +71,11 @@ class WakeDetector:
         if self._running:
             return True
 
+        # 检查权限，首次时请求权限
+        if not self._check_microphone_permission():
+            # 无权限立即停止
+            return False
+
         # 加载模型
         if not self._load_model():
             return False
@@ -133,6 +138,22 @@ class WakeDetector:
             return False
         except Exception:
             logger.exception("Failed to load Vosk model")
+            return False
+
+    def _check_microphone_permission(self) -> bool:
+        """检查录音权限"""
+        try:
+            import sounddevice as sd
+
+            sd.check_input_settings(device=None, channels=1, samplerate=16000)
+            return True
+        except sd.PortAudioError as e:
+            logger.error(
+                "Microphone permission denied or no input device: %s", e
+            )
+            return False
+        except Exception as e:
+            logger.error("Microphone check failed: %s", e)
             return False
 
     def _start_audio_stream(self) -> bool:
