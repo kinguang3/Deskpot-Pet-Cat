@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QMessageBox,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
@@ -39,6 +39,7 @@ class SettingsPanel(QWidget):
             self._voice_manager.permission_changed.connect(
                 self._on_permission_changed
             )
+        self._updating = False
 
         self._config = ConfigManager()
         self._event_bus = EventBus()
@@ -56,6 +57,7 @@ class SettingsPanel(QWidget):
 
         self._setup_ui()
         self._load_settings()
+        self._update_voice_wake_ui()
         logger.debug("SettingsPanel created")
 
     def _setup_ui(self):
@@ -163,28 +165,68 @@ class SettingsPanel(QWidget):
         self._apply_preview("behavior.dialogue_enabled", bool(state))
 
     def _on_voice_wake_changed(self, state):
-        self._apply_preview("voice_wake.enabled", bool(state))
-        if self._voice_manager:
-            success = self._voice_manager.try_enable(bool(state))
-            if not success and bool(state):
-                # 启动失败，将复选框恢复为未选中，并弹窗
-                self._voice_wake_check.setChecked(False)
-                self._apply_preview("voice_wake.enabled", False)
-                # 弹出提示窗口
-                QMessageBox.warning(
-                    self,
-                    "麦克风权限不足",
-                    "无法启用语音唤醒，请检查麦克风连接和权限设置。",
-                )
+        if self._updating:
+            return
+        if not self._voice_wake_check.isEnabled():
+            # 如果控件被禁用，忽略点击
+            return
+
+        self._updating = True
+        try:
+            self._apply_preview("voice_wake.enabled", bool(state))
+            if self._voice_manager:
+                success = self._voice_manager.try_enable(bool(state))
+                if not success and bool(state):
+                    # 启动失败：禁用，取消勾选，弹窗
+                    self._voice_wake_check.setEnabled(False)
+                    self._voice_wake_check.blockSignals(True)
+                    self._voice_wake_check.setChecked(False)
+                    self._voice_wake_check.blockSignals(False)
+                    self._apply_preview("voice_wake.enabled", False)
+                    QMessageBox.warning(
+                        self,
+                        "麦克风权限不足",
+                        "无法启用语音唤醒，请检查麦克风连接和权限设置。",
+                    )
+                elif success and bool(state):
+                    # 成功启用，确保控件可用
+                    self._voice_wake_check.setEnabled(True)
+                else:
+                    # 用户取消勾选，恢复控件可用
+                    self._voice_wake_check.setEnabled(True)
+        finally:
+            self._updating = False
 
     def _on_permission_changed(self, available: bool):
-        """当权限状态变化时"""
-        if not available:
-            # 权限丢失，取消勾选并静默处理（不弹窗）
+        if self._updating or available:
+            return
+        # 运行时权限丢失：禁用并取消勾选
+        try:
+            self._voice_wake_check.setEnabled(False)
+            self._voice_wake_check.blockSignals(True)
             self._voice_wake_check.setChecked(False)
+            self._voice_wake_check.blockSignals(False)
             self._apply_preview("voice_wake.enabled", False)
-            # 可选：在状态栏或日志中记录
             logger.warning("Voice wake disabled due to permission loss")
+        except Exception:
+            pass
+
+    def _update_voice_wake_ui(self):
+        """根据当前权限和配置更新复选框状态"""
+        if not self._voice_manager:
+            return
+        has_perm = self._voice_manager.check_permission()
+        enabled_config = self._config.get("voice_wake.enabled", True)
+
+        self._voice_wake_check.blockSignals(True)
+        if has_perm and enabled_config:
+            self._voice_wake_check.setChecked(True)
+            self._voice_wake_check.setEnabled(True)
+        else:
+            self._voice_wake_check.setChecked(False)
+            # 有权限但未启用时，启用控件方便用户开启；无权限则禁用
+            self._voice_wake_check.setEnabled(has_perm)
+        self._voice_wake_check.blockSignals(False)
 
     def _apply_preview(self, key, value):
         """更新临时配置，发出预览信号，"""

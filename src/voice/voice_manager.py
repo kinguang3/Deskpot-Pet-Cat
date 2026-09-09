@@ -39,15 +39,12 @@ class VoiceWakeManager(QObject):
 
         logger.debug("VoiceWakeManager initialized")
 
-    def try_enable(self, enable: bool):
+    def try_enable(self, enable: bool) -> bool:
         """尝试启用或禁用语音唤醒，并返回是否成功"""
         if enable:
-            if self.start():
-                self.permission_changed.emit(True)
-                return True
-            else:
-                self.permission_changed.emit(False)
-                return False
+            success = self.start()
+            self._detector = None
+            return success
         else:
             self.stop()
             self.permission_changed.emit(False)
@@ -55,9 +52,13 @@ class VoiceWakeManager(QObject):
 
     def start(self) -> bool:
         """启动语音唤醒。"""
+        # 清理残留 detector
+        if self._detector is not None:
+            self._detector.stop()
+            self._detector = None
+
         # 检查配置是否启用
-        self._enabled = self._config.get("voice_wake.enabled", True)
-        if not self._enabled:
+        if not self._config.get("voice_wake.enabled", True):
             logger.info("Voice wake disabled by config")
             return False
 
@@ -75,16 +76,23 @@ class VoiceWakeManager(QObject):
             else:
                 logger.warning("Voice wake failed to start")
                 self._available = False
-
-        except Exception:
-            logger.exception("Failed to initialize voice wake")
+                # 失败后确保 detector 被释放
+                self._detector.stop()
+                self._detector = None
+                return False
+        except Exception as e:
+            logger.exception("Failed to initialize voice wake: %s", e)
             self._available = False
+            if self._detector:
+                self._detector.stop()
+                self._detector = None
             return False
 
     def stop(self):
         """停止语音唤醒。"""
         if self._detector:
             self._detector.stop()
+            self._detector = None
         self._available = False
         logger.info("Voice wake stopped")
 
@@ -108,6 +116,12 @@ class VoiceWakeManager(QObject):
             self.start()
         else:
             self.stop()
+
+    def check_permission(self) -> bool:
+        """检查麦克风权限是否可用"""
+        from src.voice.wake_detector import WakeDetector
+
+        return WakeDetector.has_microphone()
 
     @property
     def is_running(self) -> bool:

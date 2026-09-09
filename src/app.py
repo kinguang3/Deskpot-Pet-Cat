@@ -242,6 +242,7 @@ class App(QObject):
             )
         self._settings_panel.show()
         self._settings_panel.raise_()
+        self._settings_panel._update_voice_wake_ui()
         logger.debug("Settings panel opened")
 
     def _quit(self):

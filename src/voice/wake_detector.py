@@ -162,7 +162,9 @@ class WakeDetector:
         import zipfile
         import tempfile
 
-        url = "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip"
+        url = (
+            "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip"
+        )
         zip_name = "vosk-model-small-cn-0.22.zip"
 
         logger.info("Downloading Vosk model from %s ...", url)
@@ -288,3 +290,14 @@ class WakeDetector:
     @property
     def is_running(self) -> bool:
         return self._running
+
+    @classmethod
+    def has_microphone(cls) -> bool:
+        """检查是否存在可用的麦克风及权限。"""
+        try:
+            import sounddevice as sd
+
+            sd.check_input_settings(device=None, channels=1, samplerate=16000)
+            return True
+        except Exception:
+            return False
