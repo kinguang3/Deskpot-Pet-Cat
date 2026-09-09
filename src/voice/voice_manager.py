@@ -42,11 +42,20 @@ class VoiceWakeManager(QObject):
     def try_enable(self, enable: bool) -> bool:
         """尝试启用或禁用语音唤醒，并返回是否成功"""
         if enable:
+            # 强制将配置设为 True，覆盖之前可能的 False
+            self._config.set("voice_wake.enabled", True)
+            self._config.save()
             success = self.start()
             self._detector = None
+            if success:
+                self.permission_changed.emit(True)
+            else:
+                self.permission_changed.emit(False)
             return success
         else:
             self.stop()
+            self._config.set("voice_wake.enabled", False)
+            self._config.save()
             self.permission_changed.emit(False)
             return True
 

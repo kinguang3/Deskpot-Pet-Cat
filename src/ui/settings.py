@@ -182,7 +182,6 @@ class SettingsPanel(QWidget):
                     self._voice_wake_check.blockSignals(True)
                     self._voice_wake_check.setChecked(False)
                     self._voice_wake_check.blockSignals(False)
-                    self._apply_preview("voice_wake.enabled", False)
                     QMessageBox.warning(
                         self,
                         "麦克风权限不足",
@@ -192,40 +191,51 @@ class SettingsPanel(QWidget):
                     # 成功启用，确保控件可用
                     self._voice_wake_check.setEnabled(True)
                 else:
+                    self._apply_preview("voice_wake.enabled", False)
                     # 用户取消勾选，恢复控件可用
                     self._voice_wake_check.setEnabled(True)
         finally:
             self._updating = False
 
     def _on_permission_changed(self, available: bool):
-        if self._updating or available:
+        if self._updating:
             return
-        # 运行时权限丢失：禁用并取消勾选
-        try:
-            self._voice_wake_check.setEnabled(False)
+        if not available:
+            # 如果当前配置是 True，则显示为禁用状态
+            config_enabled = self._config.get("voice_wake.enabled", True)
             self._voice_wake_check.blockSignals(True)
-            self._voice_wake_check.setChecked(False)
+            if config_enabled:
+                self._voice_wake_check.setChecked(False)
+                self._voice_wake_check.setEnabled(False)
+            else:
+                self._voice_wake_check.setChecked(False)
+                self._voice_wake_check.setEnabled(True)
             self._voice_wake_check.blockSignals(False)
-            self._apply_preview("voice_wake.enabled", False)
+            self._apply_preview("voice_wake.enabled", config_enabled)
             logger.warning("Voice wake disabled due to permission loss")
-        except Exception:
-            pass
+        else:
+            # 权限恢复时，刷新UI（可重新启用）
+            self._update_voice_wake_ui()
 
     def _update_voice_wake_ui(self):
         """根据当前权限和配置更新复选框状态"""
+
         if not self._voice_manager:
             return
         has_perm = self._voice_manager.check_permission()
-        enabled_config = self._config.get("voice_wake.enabled", True)
+        # 读取配置
+        config_enabled = self._config.get("voice_wake.enabled", True)
 
         self._voice_wake_check.blockSignals(True)
-        if has_perm and enabled_config:
+        if config_enabled and has_perm:
             self._voice_wake_check.setChecked(True)
             self._voice_wake_check.setEnabled(True)
+        elif config_enabled and not has_perm:
+            self._voice_wake_check.setChecked(False)
+            self._voice_wake_check.setEnabled(False)
         else:
             self._voice_wake_check.setChecked(False)
-            # 有权限但未启用时，启用控件方便用户开启；无权限则禁用
-            self._voice_wake_check.setEnabled(has_perm)
+            self._voice_wake_check.setEnabled(True)
         self._voice_wake_check.blockSignals(False)
 
     def _apply_preview(self, key, value):

@@ -293,11 +293,14 @@ class WakeDetector:
 
     @classmethod
     def has_microphone(cls) -> bool:
-        """检查是否存在可用的麦克风及权限。"""
         try:
             import sounddevice as sd
 
-            sd.check_input_settings(device=None, channels=1, samplerate=16000)
-            return True
-        except Exception:
+            devices = sd.query_devices()
+            for dev in devices:
+                if dev['max_input_channels'] > 0:
+                    return True
+            return False
+        except Exception as e:
+            logger.error("Microphone query failed: %s", e)
             return False
