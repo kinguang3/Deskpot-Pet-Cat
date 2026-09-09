@@ -77,7 +77,7 @@ class EventBus:
         current_thread = threading.current_thread().ident
         is_main = current_thread == self._main_thread_id
 
-        logger.debug(
+        logger.info(
             "EventBus.emit [%s] thread=%s is_main=%s listeners=%d",
             event,
             threading.current_thread().name,
@@ -95,6 +95,11 @@ class EventBus:
 
     def _call_listeners(self, event: str, data: dict):
         """实际执行回调（应在主线程调用）。"""
+        logger.info(
+            "EventBus._call_listeners [%s] callbacks=%d",
+            event,
+            len(self._listeners[event]),
+        )
         for callback in self._listeners[event]:
             try:
                 callback(data)
