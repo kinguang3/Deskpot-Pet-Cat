@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QPushButton,
     QGroupBox,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -31,8 +32,14 @@ class SettingsPanel(QWidget):
     settings_changed = Signal()
     preview_changed = Signal(dict)
 
-    def __init__(self, parent=None):
+    def __init__(self, voice_manager=None, parent=None):
         super().__init__(parent)
+        self._voice_manager = voice_manager
+        if self._voice_manager:
+            self._voice_manager.permission_changed.connect(
+                self._on_permission_changed
+            )
+
         self._config = ConfigManager()
         self._event_bus = EventBus()
 
@@ -134,7 +141,9 @@ class SettingsPanel(QWidget):
         self._topmost_check.stateChanged.connect(self._on_topmost_changed)
         self._auto_move_check.stateChanged.connect(self._on_auto_move_changed)
         self._dialogue_check.stateChanged.connect(self._on_dialogue_changed)
-        self._voice_wake_check.stateChanged.connect(self._on_voice_wake_changed)
+        self._voice_wake_check.stateChanged.connect(
+            self._on_voice_wake_changed
+        )
 
     def _on_size_changed(self, val):
         self._size_label.setText(f"{val}%")
@@ -155,6 +164,27 @@ class SettingsPanel(QWidget):
 
     def _on_voice_wake_changed(self, state):
         self._apply_preview("voice_wake.enabled", bool(state))
+        if self._voice_manager:
+            success = self._voice_manager.try_enable(bool(state))
+            if not success and bool(state):
+                # 启动失败，将复选框恢复为未选中，并弹窗
+                self._voice_wake_check.setChecked(False)
+                self._apply_preview("voice_wake.enabled", False)
+                # 弹出提示窗口
+                QMessageBox.warning(
+                    self,
+                    "麦克风权限不足",
+                    "无法启用语音唤醒，请检查麦克风连接和权限设置。",
+                )
+
+    def _on_permission_changed(self, available: bool):
+        """当权限状态变化时"""
+        if not available:
+            # 权限丢失，取消勾选并静默处理（不弹窗）
+            self._voice_wake_check.setChecked(False)
+            self._apply_preview("voice_wake.enabled", False)
+            # 可选：在状态栏或日志中记录
+            logger.warning("Voice wake disabled due to permission loss")
 
     def _apply_preview(self, key, value):
         """更新临时配置，发出预览信号，"""

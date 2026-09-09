@@ -81,7 +81,9 @@ class App(QObject):
         self._behavior_controller = BehaviorController(self._state_machine)
 
         # 情感系统（管理内部状态，影响行为权重）
-        self._emotion_system = EmotionSystem(self._behavior_controller.scheduler)
+        self._emotion_system = EmotionSystem(
+            self._behavior_controller.scheduler
+        )
 
         # 记忆系统（持久化互动数据）
         self._memory = Memory(self._storage)
@@ -231,7 +233,9 @@ class App(QObject):
     def _show_settings(self):
         """显示设置面板。"""
         if self._settings_panel is None:
-            self._settings_panel = SettingsPanel()
+            self._settings_panel = SettingsPanel(
+                voice_manager=self._voice_wake
+            )
             self._settings_panel.settings_changed.connect(self._apply_config)
             self._settings_panel.preview_changed.connect(
                 self._apply_settings_preview

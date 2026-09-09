@@ -7,7 +7,7 @@
 与 EventBus 集成，发布唤醒事件。
 """
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Signal
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
@@ -25,6 +25,9 @@ class VoiceWakeManager(QObject):
     - 处理配置和启用/禁用
     """
 
+    # 是否有权限
+    permission_changed = Signal(bool)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._config = ConfigManager()
@@ -36,13 +39,27 @@ class VoiceWakeManager(QObject):
 
         logger.debug("VoiceWakeManager initialized")
 
-    def start(self):
+    def try_enable(self, enable: bool):
+        """尝试启用或禁用语音唤醒，并返回是否成功"""
+        if enable:
+            if self.start():
+                self.permission_changed.emit(True)
+                return True
+            else:
+                self.permission_changed.emit(False)
+                return False
+        else:
+            self.stop()
+            self.permission_changed.emit(False)
+            return True
+
+    def start(self) -> bool:
         """启动语音唤醒。"""
         # 检查配置是否启用
         self._enabled = self._config.get("voice_wake.enabled", True)
         if not self._enabled:
             logger.info("Voice wake disabled by config")
-            return
+            return False
 
         # 初始化检测器
         try:
@@ -54,6 +71,7 @@ class VoiceWakeManager(QObject):
             if self._detector.start():
                 self._available = True
                 logger.info("Voice wake started")
+                return True
             else:
                 logger.warning("Voice wake failed to start")
                 self._available = False
@@ -61,6 +79,7 @@ class VoiceWakeManager(QObject):
         except Exception:
             logger.exception("Failed to initialize voice wake")
             self._available = False
+            return False
 
     def stop(self):
         """停止语音唤醒。"""
