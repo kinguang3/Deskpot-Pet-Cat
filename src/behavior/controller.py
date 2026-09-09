@@ -97,6 +97,7 @@ class BehaviorController(QObject):
         self._event_bus.on("interaction.hover_enter", self._on_hover_enter)
         self._event_bus.on("window.mouse_released", self._on_drag_end)
         self._event_bus.on("state.changed", self._on_state_changed)
+        self._event_bus.on("voice.wake_detected", self._on_voice_wake)
 
         logger.info(
             "BehaviorController initialized (sleep timeout: %ds)",
@@ -172,7 +173,7 @@ class BehaviorController(QObject):
         elif new_state == "watch":
             delay = random.randint(DEFAULT_WATCH_MIN, DEFAULT_WATCH_MAX)
             self._behavior_timer.start(delay)
-        elif new_state in ("sleep", "dragged", "clicked", "happy"):
+        elif new_state in ("sleep", "dragged", "clicked", "happy", "wake"):
             self._behavior_timer.stop()
 
     # ─── 无互动 → 睡眠 ───
@@ -254,6 +255,23 @@ class BehaviorController(QObject):
         """拖动结束 → 回到 idle。"""
         if self._sm.is_state("dragged"):
             self._sm.transition_to("idle")
+
+    # ─── 语音唤醒 ───
+
+    def _on_voice_wake(self, data: dict):
+        """语音唤醒事件 → 进入 wake 状态。"""
+        self.refresh_interaction()
+
+        current = self._sm.current_state_name
+
+        # 已经在 wake 或 clicked 状态，不重复触发
+        if current in ("wake", "clicked"):
+            return
+
+        # 进入 wake 状态
+        self._behavior_timer.stop()
+        self._sm.transition_to("wake")
+        logger.debug("Voice wake triggered from state: %s", current)
 
     # ─── 外部调用接口 ───
 

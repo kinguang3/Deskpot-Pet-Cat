@@ -28,10 +28,12 @@ from src.behavior.states import (
     ClickedState,
     DraggedState,
     HappyState,
+    WakeState,
 )
 from src.behavior.controller import BehaviorController
 from src.behavior.emotion import EmotionSystem
 from src.behavior.memory import Memory
+from src.voice import VoiceWakeManager
 from src.interaction.mouse import MouseInteraction
 from src.dialogue.bubble import DialogueBubble
 from src.dialogue.content import DialogueContent
@@ -84,6 +86,9 @@ class App(QObject):
         # 记忆系统（持久化互动数据）
         self._memory = Memory(self._storage)
 
+        # 语音唤醒系统
+        self._voice_wake = VoiceWakeManager()
+
         # 交互系统
         self._mouse_interaction = MouseInteraction()
 
@@ -119,6 +124,7 @@ class App(QObject):
         self._state_machine.add_state(ClickedState())
         self._state_machine.add_state(DraggedState())
         self._state_machine.add_state(HappyState())
+        self._state_machine.add_state(WakeState())
 
         self._state_machine.set_initial_state("idle")
 
@@ -147,6 +153,9 @@ class App(QObject):
         # 状态变化事件
         self._event_bus.on("state.changed", self._on_state_changed)
 
+        # 语音唤醒事件
+        self._event_bus.on("voice.wake_detected", self._on_voice_wake)
+
     def start(self):
         """启动应用。"""
         logger.info("Application starting...")
@@ -173,6 +182,9 @@ class App(QObject):
 
         # 启动情感系统
         self._emotion_system.start()
+
+        # 启动语音唤醒
+        self._voice_wake.start()
 
         # 显示问候语
         QTimer.singleShot(1000, self._show_greeting)
@@ -231,6 +243,7 @@ class App(QObject):
     def _quit(self):
         """退出应用。"""
         logger.info("Application quitting...")
+        self._voice_wake.stop()
         self._behavior_controller.stop()
         self._emotion_system.stop()
         self._memory.save()
@@ -352,6 +365,13 @@ class App(QObject):
         """状态变化回调。"""
         old = data.get("from", "")
         new = data.get("to", "")
+
+    def _on_voice_wake(self, data: dict):
+        """语音唤醒回调。"""
+        # 显示唤醒回应
+        if self._config.get("behavior.dialogue_enabled", True):
+            text = self._dialogue_content.get_wake_line()
+            self._show_dialogue(text)
 
     def eventFilter(self, watched, event):
         """事件过滤器"""

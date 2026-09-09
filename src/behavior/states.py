@@ -106,8 +106,8 @@ class SleepState(State):
         pass
 
     def can_transition_to(self, target: str) -> bool:
-        # 允许被点击唤醒、被拖动、或回到 idle
-        return target in ("idle", "clicked", "dragged")
+        # 允许被点击唤醒、被拖动、语音唤醒、或回到 idle
+        return target in ("idle", "clicked", "dragged", "wake")
 
 
 class WatchState(State):
@@ -207,3 +207,27 @@ class HappyState(State):
     def _on_timeout(self):
         if self._machine:
             self._machine.transition_to("idle")
+
+
+class WakeState(State):
+    """语音唤醒状态。Nina 被语音唤醒后的短暂反应。"""
+
+    def __init__(self):
+        super().__init__("wake", priority=4)
+        self._timer = QTimer()
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self._on_timeout)
+
+    def enter(self):
+        self._machine.anim.play("watching")
+        self._timer.start(1500)
+
+    def exit(self):
+        self._timer.stop()
+
+    def _on_timeout(self):
+        if self._machine:
+            self._machine.transition_to("idle")
+
+    def can_transition_to(self, target: str) -> bool:
+        return True

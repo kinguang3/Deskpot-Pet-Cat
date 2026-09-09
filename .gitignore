@@ -35,3 +35,6 @@ data/
 # Logs
 logs/
 *.log
+
+# Models (downloaded, not source)
+models/

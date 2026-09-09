@@ -103,6 +103,9 @@ class SettingsPanel(QWidget):
         self._dialogue_check = QCheckBox("显示对话")
         behavior_layout.addWidget(self._dialogue_check)
 
+        self._voice_wake_check = QCheckBox("语音唤醒 (嘿，Nina)")
+        behavior_layout.addWidget(self._voice_wake_check)
+
         behavior_group.setLayout(behavior_layout)
         layout.addWidget(behavior_group)
 
@@ -131,6 +134,7 @@ class SettingsPanel(QWidget):
         self._topmost_check.stateChanged.connect(self._on_topmost_changed)
         self._auto_move_check.stateChanged.connect(self._on_auto_move_changed)
         self._dialogue_check.stateChanged.connect(self._on_dialogue_changed)
+        self._voice_wake_check.stateChanged.connect(self._on_voice_wake_changed)
 
     def _on_size_changed(self, val):
         self._size_label.setText(f"{val}%")
@@ -148,6 +152,9 @@ class SettingsPanel(QWidget):
 
     def _on_dialogue_changed(self, state):
         self._apply_preview("behavior.dialogue_enabled", bool(state))
+
+    def _on_voice_wake_changed(self, state):
+        self._apply_preview("voice_wake.enabled", bool(state))
 
     def _apply_preview(self, key, value):
         """更新临时配置，发出预览信号，"""
@@ -176,6 +183,9 @@ class SettingsPanel(QWidget):
         )
         self._dialogue_check.setChecked(
             self._current.get("behavior.dialogue_enabled", True)
+        )
+        self._voice_wake_check.setChecked(
+            self._current.get("voice_wake.enabled", True)
         )
 
         # 更新标签显示
