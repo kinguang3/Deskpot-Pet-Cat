@@ -181,12 +181,16 @@ class WakeDetector:
                     result = json.loads(self._recognizer.Result())
                     text = result.get("text", "").lower()
                     if text:
+                        logger.info("[Voice Recognized] %s", text)
+                        print("[Voice] " + text)
                         self._check_wake_word(text)
 
                 # 也检查部分结果
                 partial = json.loads(self._recognizer.PartialResult())
                 partial_text = partial.get("partial", "").lower()
                 if partial_text:
+                    logger.debug("[Voice Partial] %s", partial_text)
+                    print("[Voice] ... " + partial_text)
                     self._check_wake_word(partial_text)
 
             except Exception:
@@ -200,13 +204,16 @@ class WakeDetector:
         # 冷却检查
         now = time.time()
         if now - self._last_trigger_time < self._cooldown:
+            remaining = self._cooldown - (now - self._last_trigger_time)
+            logger.debug("[Voice] Cooldown: %.1fs remaining", remaining)
             return
 
         # 检查是否匹配唤醒词
         for variant in WAKE_VARIANTS:
             if variant in text:
                 self._last_trigger_time = now
-                logger.info("Wake phrase detected: %s", text)
+                logger.info("[Voice] WAKE DETECTED: %s", text)
+                print("[Voice] *** WAKE DETECTED: " + text + " ***")
 
                 if self._callback:
                     try:
