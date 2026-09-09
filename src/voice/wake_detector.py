@@ -110,7 +110,7 @@ class WakeDetector:
         logger.info("Wake detection stopped")
 
     def _load_model(self) -> bool:
-        """加载 Vosk 模型。"""
+        """加载 Vosk 模型，不存在时自动下载。"""
         try:
             from vosk import Model, KaldiRecognizer, SetLogLevel
 
@@ -125,8 +125,8 @@ class WakeDetector:
 
             model_dir = Path(self._model_path)
             if not model_dir.exists():
-                logger.error("Vosk model not found: %s", self._model_path)
-                return False
+                if not self._download_model(model_dir):
+                    return False
 
             self._model = Model(str(model_dir))
             self._recognizer = KaldiRecognizer(self._model, 16000)
@@ -154,6 +154,50 @@ class WakeDetector:
             return False
         except Exception as e:
             logger.error("Microphone check failed: %s", e)
+            return False
+
+    def _download_model(self, model_dir: Path) -> bool:
+        """下载 Vosk 中文模型。"""
+        import urllib.request
+        import zipfile
+        import tempfile
+
+        url = "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip"
+        zip_name = "vosk-model-small-cn-0.22.zip"
+
+        logger.info("Downloading Vosk model from %s ...", url)
+        logger.info("This is a one-time download (~44MB).")
+
+        try:
+            # 创建 models 目录
+            models_parent = model_dir.parent
+            models_parent.mkdir(parents=True, exist_ok=True)
+
+            # 下载到临时文件
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                zip_path = Path(tmp_dir) / zip_name
+
+                def _progress(block_num, block_size, total_size):
+                    downloaded = block_num * block_size
+                    if total_size > 0:
+                        pct = min(100, downloaded * 100 // total_size)
+                        if pct % 10 == 0:
+                            logger.info("Downloading model: %d%%", pct)
+
+                urllib.request.urlretrieve(url, str(zip_path), _progress)
+
+                # 解压
+                logger.info("Extracting model...")
+                with zipfile.ZipFile(str(zip_path), "r") as zf:
+                    zf.extractall(str(models_parent))
+
+            logger.info("Model downloaded to: %s", model_dir)
+            return True
+
+        except Exception:
+            logger.exception("Failed to download Vosk model")
+            logger.error("Please download manually from: %s", url)
+            logger.error("Extract to: %s", models_parent)
             return False
 
     def _start_audio_stream(self) -> bool:
