@@ -381,8 +381,14 @@ class App(QObject):
 
     def _on_state_changed(self, data: dict):
         """状态变化回调。"""
-        old = data.get("from", "")
         new = data.get("to", "")
+
+        # 非 sleep 状态：开启始终命令模式（直接说命令即可）
+        if new != "sleep":
+            self._voice_wake.set_command_mode(True)
+        else:
+            # sleep 状态：关闭命令模式，需要「嘿」唤醒
+            self._voice_wake.set_command_mode(False)
 
     def _on_voice_wake(self, data: dict):
         """语音唤醒回调。"""
@@ -391,17 +397,17 @@ class App(QObject):
             text = self._dialogue_content.get_wake_line()
             self._show_dialogue(text)
 
-        # 进入命令窗口（5 秒内可直接说命令）
-        self._voice_wake.enter_command_mode()
-        self._command_window_active = True
-        self._command_window_timer.start(5000)
-        logger.info("[Voice] Command window started (5s)")
+        current = self._state_machine.current_state_name
+
+        # 从 sleep 唤醒：进入 5 秒命令窗口
+        if current == "wake":
+            self._voice_wake.enter_command_mode()
+            self._command_window_active = True
+            self._command_window_timer.start(5000)
+            logger.info("[Voice] Command window started (5s)")
 
     def _on_voice_command(self, data: dict):
         """语音命令回调。"""
-        if not self._command_window_active:
-            return
-
         intent = data.get("intent", "unknown")
         logger.info("[Voice] Command received: %s", intent)
 
@@ -409,9 +415,9 @@ class App(QObject):
             response = get_time_response()
             if self._config.get("behavior.dialogue_enabled", True):
                 self._show_dialogue(response)
-
-        # 命令已处理，退出命令窗口
-        self._end_command_window()
+            # 如果在命令窗口期内，处理完命令后关闭窗口
+            if self._command_window_active:
+                self._end_command_window()
 
     def _on_command_window_timeout(self):
         """命令窗口超时 → 退出语音交互。"""

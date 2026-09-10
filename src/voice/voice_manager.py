@@ -167,6 +167,14 @@ class VoiceWakeManager(QObject):
         if self._detector:
             self._detector.exit_command_mode()
 
+    def set_command_mode(self, enabled: bool):
+        """设置始终命令模式。
+
+        开启后，非 sleep 状态下所有语音直接作为命令处理。
+        """
+        if self._detector:
+            self._detector.set_always_command(enabled)
+
     def _on_command_detected(self, text: str):
         """命令窗口内识别到语音文本。"""
         logger.info("[Voice Command] %s", text)

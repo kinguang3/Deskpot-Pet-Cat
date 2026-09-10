@@ -60,6 +60,9 @@ class WakeDetector:
         # 命令窗口模式
         self._command_mode = False
 
+        # 始终命令模式（非 sleep 时所有语音都当命令处理）
+        self._always_command = False
+
         logger.debug("WakeDetector initialized (phrase: %s)", wake_phrase)
 
     def set_callback(self, callback):
@@ -79,6 +82,16 @@ class WakeDetector:
         """退出命令窗口模式。"""
         self._command_mode = False
         logger.info("[Voice] Command mode OFF")
+
+    def set_always_command(self, enabled: bool):
+        """设置始终命令模式。
+
+        开启后，所有识别文本同时发送给命令回调。
+        唤醒词仍然触发唤醒回调。
+        用于非 sleep 状态下直接执行语音命令。
+        """
+        self._always_command = enabled
+        logger.info("[Voice] Always-command mode: %s", enabled)
 
     def start(self) -> bool:
         """启动唤醒检测。
@@ -274,9 +287,13 @@ class WakeDetector:
                 if partial_text:
                     logger.debug("[Voice Partial] %s", partial_text)
                     print("[Voice] ... " + partial_text)
-                    # 命令模式下也转发部分结果
-                    if self._command_mode:
-                        self._dispatch_text(partial_text)
+                    # 命令模式或始终命令模式下转发部分结果
+                    if self._command_mode or self._always_command:
+                        if self._command_callback:
+                            try:
+                                self._command_callback(partial_text)
+                            except Exception:
+                                logger.exception("Error in command callback")
 
             except Exception:
                 if self._running:
@@ -285,14 +302,22 @@ class WakeDetector:
         logger.debug("Listening loop ended")
 
     def _dispatch_text(self, text: str):
-        """分发识别文本：命令模式→命令回调，否则→唤醒词检查。"""
-        if self._command_mode and self._command_callback:
+        """分发识别文本。"""
+        # 始终检查唤醒词（任何状态下说「嘿」都能唤醒）
+        self._check_wake_word(text)
+
+        # 始终命令模式：所有文本同时发给命令回调
+        if self._always_command and self._command_callback:
             try:
                 self._command_callback(text)
             except Exception:
                 logger.exception("Error in command callback")
-        else:
-            self._check_wake_word(text)
+        # 普通命令窗口模式：只在命令窗口期内发给命令回调
+        elif self._command_mode and self._command_callback:
+            try:
+                self._command_callback(text)
+            except Exception:
+                logger.exception("Error in command callback")
 
     def _check_wake_word(self, text: str):
         """检查文本中是否包含唤醒词。"""
