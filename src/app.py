@@ -34,6 +34,8 @@ from src.behavior.controller import BehaviorController
 from src.behavior.emotion import EmotionSystem
 from src.behavior.memory import Memory
 from src.voice import VoiceWakeManager
+from src.voice.command_parser import Intent
+from src.voice.commands.time_command import get_time_response
 from src.interaction.mouse import MouseInteraction
 from src.dialogue.bubble import DialogueBubble
 from src.dialogue.content import DialogueContent
@@ -105,6 +107,14 @@ class App(QObject):
         self._dialogue_timer.timeout.connect(self._random_dialogue)
         self._dialogue_timer.start(random.randint(30000, 60000))
 
+        # 语音命令窗口定时器（唤醒后 5 秒内接收命令）
+        self._command_window_timer = QTimer(self)
+        self._command_window_timer.setSingleShot(True)
+        self._command_window_timer.timeout.connect(
+            self._on_command_window_timeout
+        )
+        self._command_window_active = False
+
         # 连接事件
         self._connect_events()
 
@@ -157,6 +167,9 @@ class App(QObject):
 
         # 语音唤醒事件
         self._event_bus.on("voice.wake_detected", self._on_voice_wake)
+
+        # 语音命令事件
+        self._event_bus.on("voice.command_detected", self._on_voice_command)
 
     def start(self):
         """启动应用。"""
@@ -377,6 +390,41 @@ class App(QObject):
         if self._config.get("behavior.dialogue_enabled", True):
             text = self._dialogue_content.get_wake_line()
             self._show_dialogue(text)
+
+        # 进入命令窗口（5 秒内可直接说命令）
+        self._voice_wake.enter_command_mode()
+        self._command_window_active = True
+        self._command_window_timer.start(5000)
+        logger.info("[Voice] Command window started (5s)")
+
+    def _on_voice_command(self, data: dict):
+        """语音命令回调。"""
+        if not self._command_window_active:
+            return
+
+        intent = data.get("intent", "unknown")
+        logger.info("[Voice] Command received: %s", intent)
+
+        if intent == Intent.TIME_QUERY.value:
+            response = get_time_response()
+            if self._config.get("behavior.dialogue_enabled", True):
+                self._show_dialogue(response)
+
+        # 命令已处理，退出命令窗口
+        self._end_command_window()
+
+    def _on_command_window_timeout(self):
+        """命令窗口超时 → 退出语音交互。"""
+        logger.info("[Voice] Command window timeout")
+        self._end_command_window()
+
+    def _end_command_window(self):
+        """退出命令窗口模式。"""
+        if self._command_window_active:
+            self._command_window_active = False
+            self._command_window_timer.stop()
+            self._voice_wake.exit_command_mode()
+            logger.info("[Voice] Command window ended")
 
     def eventFilter(self, watched, event):
         """事件过滤器"""

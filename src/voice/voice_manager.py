@@ -11,6 +11,7 @@ from PySide6.QtCore import QObject, Signal
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
+from src.voice.command_parser import CommandParser, Intent
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -32,6 +33,7 @@ class VoiceWakeManager(QObject):
         super().__init__(parent)
         self._config = ConfigManager()
         self._event_bus = EventBus()
+        self._parser = CommandParser()
 
         self._detector = None
         self._enabled = False
@@ -77,6 +79,7 @@ class VoiceWakeManager(QObject):
 
             self._detector = WakeDetector()
             self._detector.set_callback(self._on_wake_detected)
+            self._detector.set_command_callback(self._on_command_detected)
 
             if self._detector.start():
                 self._available = True
@@ -153,6 +156,33 @@ class VoiceWakeManager(QObject):
             },
         )
         logger.debug("Wake event emitted")
+
+    def enter_command_mode(self):
+        """进入命令窗口模式（唤醒后接收语音命令）。"""
+        if self._detector:
+            self._detector.enter_command_mode()
+
+    def exit_command_mode(self):
+        """退出命令窗口模式。"""
+        if self._detector:
+            self._detector.exit_command_mode()
+
+    def _on_command_detected(self, text: str):
+        """命令窗口内识别到语音文本。"""
+        logger.info("[Voice Command] %s", text)
+
+        # 解析意图
+        intent, data = self._parser.parse(text)
+
+        # 通过 EventBus 发布命令事件
+        self._event_bus.emit(
+            "voice.command_detected",
+            {
+                "source": "voice",
+                "intent": intent.value,
+                "text": text,
+            },
+        )
 
     def get_debug_info(self) -> dict:
         """获取调试信息。"""

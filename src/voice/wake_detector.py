@@ -44,6 +44,7 @@ class WakeDetector:
         self._wake_phrase = wake_phrase.lower()
         self._running = False
         self._callback = None
+        self._command_callback = None
         self._thread: threading.Thread = None
         self._audio_queue: queue.Queue = queue.Queue()
 
@@ -56,11 +57,28 @@ class WakeDetector:
         self._cooldown = 2.0  # 秒
         self._last_trigger_time = 0
 
+        # 命令窗口模式
+        self._command_mode = False
+
         logger.debug("WakeDetector initialized (phrase: %s)", wake_phrase)
 
     def set_callback(self, callback):
         """设置唤醒回调函数。"""
         self._callback = callback
+
+    def set_command_callback(self, callback):
+        """设置命令回调函数（命令窗口内所有语音文本）。"""
+        self._command_callback = callback
+
+    def enter_command_mode(self):
+        """进入命令窗口模式（唤醒后接收语音命令）。"""
+        self._command_mode = True
+        logger.info("[Voice] Command mode ON")
+
+    def exit_command_mode(self):
+        """退出命令窗口模式。"""
+        self._command_mode = False
+        logger.info("[Voice] Command mode OFF")
 
     def start(self) -> bool:
         """启动唤醒检测。
@@ -248,7 +266,7 @@ class WakeDetector:
                     if text:
                         logger.info("[Voice Recognized] %s", text)
                         print("[Voice] " + text)
-                        self._check_wake_word(text)
+                        self._dispatch_text(text)
 
                 # 也检查部分结果
                 partial = json.loads(self._recognizer.PartialResult())
@@ -256,13 +274,25 @@ class WakeDetector:
                 if partial_text:
                     logger.debug("[Voice Partial] %s", partial_text)
                     print("[Voice] ... " + partial_text)
-                    self._check_wake_word(partial_text)
+                    # 命令模式下也转发部分结果
+                    if self._command_mode:
+                        self._dispatch_text(partial_text)
 
             except Exception:
                 if self._running:
                     logger.exception("Error in listen loop")
 
         logger.debug("Listening loop ended")
+
+    def _dispatch_text(self, text: str):
+        """分发识别文本：命令模式→命令回调，否则→唤醒词检查。"""
+        if self._command_mode and self._command_callback:
+            try:
+                self._command_callback(text)
+            except Exception:
+                logger.exception("Error in command callback")
+        else:
+            self._check_wake_word(text)
 
     def _check_wake_word(self, text: str):
         """检查文本中是否包含唤醒词。"""
