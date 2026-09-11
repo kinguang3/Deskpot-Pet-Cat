@@ -39,6 +39,10 @@ class VoiceWakeManager(QObject):
         self._enabled = False
         self._available = False
 
+        # 命令冷却
+        self._last_command_time = 0.0
+        self._command_cooldown = 3.0  # 秒
+
         logger.debug("VoiceWakeManager initialized")
 
     def try_enable(self, enable: bool) -> bool:
@@ -177,10 +181,21 @@ class VoiceWakeManager(QObject):
 
     def _on_command_detected(self, text: str):
         """命令窗口内识别到语音文本。"""
+        # 命令冷却：执行过一个命令后 3 秒内不重复执行
+        import time
+        now = time.time()
+        if now - self._last_command_time < self._command_cooldown:
+            logger.debug("[Voice Command] Cooldown, ignoring: %s", text)
+            return
+
         logger.info("[Voice Command] %s", text)
 
         # 解析意图
         intent, data = self._parser.parse(text)
+
+        # 有效命令，记录冷却时间
+        if intent != Intent.UNKNOWN:
+            self._last_command_time = now
 
         # 通过 EventBus 发布命令事件
         self._event_bus.emit(

@@ -36,6 +36,7 @@ from src.behavior.memory import Memory
 from src.voice import VoiceWakeManager
 from src.voice.command_parser import Intent
 from src.voice.commands.time_command import get_time_response
+from src.voice.commands.open_browser_command import open_browser
 from src.interaction.mouse import MouseInteraction
 from src.dialogue.bubble import DialogueBubble
 from src.dialogue.content import DialogueContent
@@ -415,9 +416,15 @@ class App(QObject):
             response = get_time_response()
             if self._config.get("behavior.dialogue_enabled", True):
                 self._show_dialogue(response)
-            # 如果在命令窗口期内，处理完命令后关闭窗口
-            if self._command_window_active:
-                self._end_command_window()
+
+        elif intent == Intent.OPEN_BROWSER.value:
+            success, response = open_browser()
+            if self._config.get("behavior.dialogue_enabled", True):
+                self._show_dialogue(response)
+
+        # 如果在命令窗口期内，处理完命令后关闭窗口
+        if self._command_window_active:
+            self._end_command_window()
 
     def _on_command_window_timeout(self):
         """命令窗口超时 → 退出语音交互。"""
