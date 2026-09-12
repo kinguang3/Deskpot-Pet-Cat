@@ -37,6 +37,8 @@ from src.voice import VoiceWakeManager
 from src.voice.command_parser import Intent
 from src.voice.commands.time_command import get_time_response
 from src.voice.commands.open_browser_command import open_browser
+from src.voice.custom_commands import CustomCommandManager
+from src.voice import action_handler
 from src.interaction.mouse import MouseInteraction
 from src.dialogue.bubble import DialogueBubble
 from src.dialogue.content import DialogueContent
@@ -93,6 +95,10 @@ class App(QObject):
 
         # 语音唤醒系统
         self._voice_wake = VoiceWakeManager()
+
+        # 自定义语音指令
+        self._custom_commands = CustomCommandManager()
+        self._voice_wake.set_custom_manager(self._custom_commands)
 
         # 交互系统
         self._mouse_interaction = MouseInteraction()
@@ -202,6 +208,9 @@ class App(QObject):
         # 启动语音唤醒
         self._voice_wake.start()
 
+        # 启动时非 sleep 状态，开启始终命令模式
+        self._voice_wake.set_command_mode(True)
+
         # 显示问候语
         QTimer.singleShot(1000, self._show_greeting)
 
@@ -248,12 +257,14 @@ class App(QObject):
         """显示设置面板。"""
         if self._settings_panel is None:
             self._settings_panel = SettingsPanel(
-                voice_manager=self._voice_wake
+                voice_manager=self._voice_wake,
+                custom_commands=self._custom_commands,
             )
             self._settings_panel.settings_changed.connect(self._apply_config)
             self._settings_panel.preview_changed.connect(
                 self._apply_settings_preview
             )
+        self._settings_panel._refresh_custom_commands()
         self._settings_panel.show()
         self._settings_panel.raise_()
         self._settings_panel._update_voice_wake_ui()
@@ -419,6 +430,19 @@ class App(QObject):
 
         elif intent == Intent.OPEN_BROWSER.value:
             success, response = open_browser()
+            if self._config.get("behavior.dialogue_enabled", True):
+                self._show_dialogue(response)
+
+        elif intent == Intent.CUSTOM_COMMAND.value:
+            action_type = data.get("action_type", "")
+            action_target = data.get("action_target", "")
+            custom_response = data.get("response", "")
+            logger.info(
+                "[Voice] Custom command: type=%s, target=%s",
+                action_type,
+                action_target,
+            )
+            success, response = action_handler.execute(action_type, action_target, custom_response)
             if self._config.get("behavior.dialogue_enabled", True):
                 self._show_dialogue(response)
 

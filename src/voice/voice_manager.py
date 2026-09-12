@@ -43,6 +43,9 @@ class VoiceWakeManager(QObject):
         self._last_command_time = 0.0
         self._command_cooldown = 3.0  # 秒
 
+        # 始终命令模式状态（重启后需要恢复）
+        self._always_command_enabled = False
+
         logger.debug("VoiceWakeManager initialized")
 
     def try_enable(self, enable: bool) -> bool:
@@ -84,6 +87,10 @@ class VoiceWakeManager(QObject):
             self._detector = WakeDetector()
             self._detector.set_callback(self._on_wake_detected)
             self._detector.set_command_callback(self._on_command_detected)
+
+            # 恢复始终命令模式状态
+            if self._always_command_enabled:
+                self._detector.set_always_command(True)
 
             if self._detector.start():
                 self._available = True
@@ -176,18 +183,34 @@ class VoiceWakeManager(QObject):
 
         开启后，非 sleep 状态下所有语音直接作为命令处理。
         """
+        self._always_command_enabled = enabled
         if self._detector:
             self._detector.set_always_command(enabled)
 
+    def set_custom_manager(self, manager):
+        """设置自定义指令管理器（注入到 CommandParser）。"""
+        self._parser.set_custom_manager(manager)
+
     def _on_command_detected(self, text: str):
         """命令窗口内识别到语音文本。"""
-        # 命令冷却：执行过一个命令后 3 秒内不重复执行
         import time
         now = time.time()
+
+        # 命令冷却：执行过一个命令后 3 秒内不重复执行
         if now - self._last_command_time < self._command_cooldown:
             logger.debug("[Voice Command] Cooldown, ignoring: %s", text)
             return
 
+        # 文本去重：同一段文本短时间内不重复处理
+        if (
+            hasattr(self, "_last_command_text")
+            and text == self._last_command_text
+            and now - self._last_command_time < 1.0
+        ):
+            logger.debug("[Voice Command] Duplicate ignored: %s", text)
+            return
+
+        self._last_command_text = text
         logger.info("[Voice Command] %s", text)
 
         # 解析意图
@@ -197,15 +220,14 @@ class VoiceWakeManager(QObject):
         if intent != Intent.UNKNOWN:
             self._last_command_time = now
 
-        # 通过 EventBus 发布命令事件
-        self._event_bus.emit(
-            "voice.command_detected",
-            {
-                "source": "voice",
-                "intent": intent.value,
-                "text": text,
-            },
-        )
+        # 通过 EventBus 发布命令事件（合并 parser 返回的额外数据）
+        event_data = {
+            "source": "voice",
+            "intent": intent.value,
+            "text": text,
+        }
+        event_data.update(data)
+        self._event_bus.emit("voice.command_detected", event_data)
 
     def get_debug_info(self) -> dict:
         """获取调试信息。"""

@@ -19,6 +19,7 @@ class Intent(Enum):
     """命令意图枚举。"""
     TIME_QUERY = "time_query"
     OPEN_BROWSER = "open_browser"
+    CUSTOM_COMMAND = "custom_command"
     UNKNOWN = "unknown"
 
 
@@ -47,32 +48,45 @@ class CommandParser:
     def __init__(self):
         self._time_patterns = [re.compile(kw) for kw in _TIME_KEYWORDS]
         self._browser_patterns = [re.compile(kw) for kw in _BROWSER_KEYWORDS]
+        self._custom_manager = None
+
+    def set_custom_manager(self, manager):
+        """设置自定义指令管理器。"""
+        self._custom_manager = manager
 
     def parse(self, text: str) -> tuple[Intent, dict]:
         """解析文本，返回 (意图, 数据)。
 
-        Args:
-            text: ASR 识别出的文本（已小写化）
-
-        Returns:
-            (Intent, 数据字典)
+        优先级：内置指令 > 自定义指令 > UNKNOWN
         """
         text = text.strip().lower()
 
         if not text:
             return Intent.UNKNOWN, {}
 
-        # 检查时间查询
+        # 1. 内置指令（最高优先级）
         for pattern in self._time_patterns:
             if pattern.search(text):
                 logger.info("Intent matched: time_query (text=%s)", text)
                 return Intent.TIME_QUERY, {"text": text}
 
-        # 检查打开浏览器
         for pattern in self._browser_patterns:
             if pattern.search(text):
                 logger.info("Intent matched: open_browser (text=%s)", text)
                 return Intent.OPEN_BROWSER, {"text": text}
+
+        # 2. 自定义指令
+        if self._custom_manager:
+            cmd = self._custom_manager.match(text)
+            if cmd:
+                logger.info("Intent matched: custom_command id=%s (text=%s)", cmd.id, text)
+                return Intent.CUSTOM_COMMAND, {
+                    "text": text,
+                    "command_id": cmd.id,
+                    "action_type": cmd.action_type,
+                    "action_target": cmd.action_target,
+                    "response": cmd.response,
+                }
 
         logger.debug("Intent unknown: %s", text)
         return Intent.UNKNOWN, {"text": text}

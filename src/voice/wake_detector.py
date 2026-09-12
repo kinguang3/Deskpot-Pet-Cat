@@ -57,6 +57,11 @@ class WakeDetector:
         self._cooldown = 2.0  # 秒
         self._last_trigger_time = 0
 
+        # 命令去重：同一段语音只执行一次
+        self._last_command_text = ""
+        self._last_command_time = 0
+        self._command_dedup_window = 1.0  # 秒内相同文本不重复执行
+
         # 命令窗口模式
         self._command_mode = False
 
@@ -281,19 +286,11 @@ class WakeDetector:
                         print("[Voice] " + text)
                         self._dispatch_text(text)
 
-                # 也检查部分结果
+                # 也检查部分结果（仅日志，不触发命令）
                 partial = json.loads(self._recognizer.PartialResult())
                 partial_text = partial.get("partial", "").lower()
                 if partial_text:
                     logger.debug("[Voice Partial] %s", partial_text)
-                    print("[Voice] ... " + partial_text)
-                    # 命令模式或始终命令模式下转发部分结果
-                    if self._command_mode or self._always_command:
-                        if self._command_callback:
-                            try:
-                                self._command_callback(partial_text)
-                            except Exception:
-                                logger.exception("Error in command callback")
 
             except Exception:
                 if self._running:
@@ -306,14 +303,27 @@ class WakeDetector:
         # 始终检查唤醒词（任何状态下说「嘿」都能唤醒）
         self._check_wake_word(text)
 
+        # 去重：同一段语音在短时间内只执行一次
+        now = time.time()
+        if (
+            text == self._last_command_text
+            and now - self._last_command_time < self._command_dedup_window
+        ):
+            logger.debug("[Voice] Duplicate command ignored: %s", text)
+            return
+
         # 始终命令模式：所有文本同时发给命令回调
         if self._always_command and self._command_callback:
+            self._last_command_text = text
+            self._last_command_time = now
             try:
                 self._command_callback(text)
             except Exception:
                 logger.exception("Error in command callback")
         # 普通命令窗口模式：只在命令窗口期内发给命令回调
         elif self._command_mode and self._command_callback:
+            self._last_command_text = text
+            self._last_command_time = now
             try:
                 self._command_callback(text)
             except Exception:
