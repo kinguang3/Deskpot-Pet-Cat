@@ -13,8 +13,6 @@
 数值缓慢变化，不会大幅波动。
 """
 
-import time
-
 from PySide6.QtCore import QTimer, QObject
 
 from src.behavior.scheduler import BehaviorScheduler
@@ -32,10 +30,10 @@ DEFAULT_SLEEPILESS = 20.0
 DEFAULT_AFFECTION = 40.0
 
 # 情感变化速率（每秒）
-DECAY_RATE = 0.02        # 自然衰减
-RECOVER_RATE = 0.01      # 精力恢复（idle时）
-SLEEP_DRAIN = 0.05       # 困倦增长速率
-WAKE_RECOVER = 0.3       # 醒来时精力恢复
+DECAY_RATE = 0.02  # 自然衰减
+RECOVER_RATE = 0.01  # 精力恢复（idle时）
+SLEEP_DRAIN = 0.05  # 困倦增长速率
+WAKE_RECOVER = 0.3  # 醒来时精力恢复
 
 
 class EmotionSystem(QObject):

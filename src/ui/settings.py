@@ -19,14 +19,11 @@ from PySide6.QtWidgets import (
     QDialog,
     QLineEdit,
     QComboBox,
-    QTextEdit,
     QListWidget,
     QListWidgetItem,
     QDialogButtonBox,
-    QScrollArea,
-    QFrame,
 )
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
@@ -41,15 +38,10 @@ class SettingsPanel(QWidget):
     settings_changed = Signal()
     preview_changed = Signal(dict)
 
-    def __init__(self, voice_manager=None, custom_commands=None, parent=None):
+    def __init__(self, custom_commands=None, parent=None):
         super().__init__(parent)
-        self._voice_manager = voice_manager
-        self._custom_commands = custom_commands
-        if self._voice_manager:
-            self._voice_manager.permission_changed.connect(
-                self._on_permission_changed
-            )
         self._updating = False
+        self._custom_commands = custom_commands
 
         self._config = ConfigManager()
         self._event_bus = EventBus()
@@ -67,7 +59,6 @@ class SettingsPanel(QWidget):
 
         self._setup_ui()
         self._load_settings()
-        self._update_voice_wake_ui()
         self._refresh_custom_commands()
         logger.debug("SettingsPanel created")
 
@@ -123,9 +114,6 @@ class SettingsPanel(QWidget):
         self._dialogue_check = QCheckBox("显示对话")
         behavior_layout.addWidget(self._dialogue_check)
 
-        self._voice_wake_check = QCheckBox("语音唤醒 (嘿，Nina)")
-        behavior_layout.addWidget(self._voice_wake_check)
-
         behavior_group.setLayout(behavior_layout)
         layout.addWidget(behavior_group)
 
@@ -180,9 +168,6 @@ class SettingsPanel(QWidget):
         self._topmost_check.stateChanged.connect(self._on_topmost_changed)
         self._auto_move_check.stateChanged.connect(self._on_auto_move_changed)
         self._dialogue_check.stateChanged.connect(self._on_dialogue_changed)
-        self._voice_wake_check.stateChanged.connect(
-            self._on_voice_wake_changed
-        )
 
     def _on_size_changed(self, val):
         self._size_label.setText(f"{val}%")
@@ -200,80 +185,6 @@ class SettingsPanel(QWidget):
 
     def _on_dialogue_changed(self, state):
         self._apply_preview("behavior.dialogue_enabled", bool(state))
-
-    def _on_voice_wake_changed(self, state):
-        if self._updating:
-            return
-        if not self._voice_wake_check.isEnabled():
-            # 如果控件被禁用，忽略点击
-            return
-
-        self._updating = True
-        try:
-            self._apply_preview("voice_wake.enabled", bool(state))
-            if self._voice_manager:
-                success = self._voice_manager.try_enable(bool(state))
-                if not success and bool(state):
-                    # 启动失败：禁用，取消勾选，弹窗
-                    self._voice_wake_check.setEnabled(False)
-                    self._voice_wake_check.blockSignals(True)
-                    self._voice_wake_check.setChecked(False)
-                    self._voice_wake_check.blockSignals(False)
-                    QMessageBox.warning(
-                        self,
-                        "麦克风权限不足",
-                        "无法启用语音唤醒，请检查麦克风连接和权限设置。",
-                    )
-                elif success and bool(state):
-                    # 成功启用，确保控件可用
-                    self._voice_wake_check.setEnabled(True)
-                else:
-                    self._apply_preview("voice_wake.enabled", False)
-                    # 用户取消勾选，恢复控件可用
-                    self._voice_wake_check.setEnabled(True)
-        finally:
-            self._updating = False
-
-    def _on_permission_changed(self, available: bool):
-        if self._updating:
-            return
-        if not available:
-            # 如果当前配置是 True，则显示为禁用状态
-            config_enabled = self._config.get("voice_wake.enabled", True)
-            self._voice_wake_check.blockSignals(True)
-            if config_enabled:
-                self._voice_wake_check.setChecked(False)
-                self._voice_wake_check.setEnabled(False)
-            else:
-                self._voice_wake_check.setChecked(False)
-                self._voice_wake_check.setEnabled(True)
-            self._voice_wake_check.blockSignals(False)
-            self._apply_preview("voice_wake.enabled", config_enabled)
-            logger.warning("Voice wake disabled due to permission loss")
-        else:
-            # 权限恢复时，刷新UI（可重新启用）
-            self._update_voice_wake_ui()
-
-    def _update_voice_wake_ui(self):
-        """根据当前权限和配置更新复选框状态"""
-
-        if not self._voice_manager:
-            return
-        has_perm = self._voice_manager.check_permission()
-        # 读取配置
-        config_enabled = self._config.get("voice_wake.enabled", True)
-
-        self._voice_wake_check.blockSignals(True)
-        if config_enabled and has_perm:
-            self._voice_wake_check.setChecked(True)
-            self._voice_wake_check.setEnabled(True)
-        elif config_enabled and not has_perm:
-            self._voice_wake_check.setChecked(False)
-            self._voice_wake_check.setEnabled(False)
-        else:
-            self._voice_wake_check.setChecked(False)
-            self._voice_wake_check.setEnabled(True)
-        self._voice_wake_check.blockSignals(False)
 
     def _refresh_custom_commands(self):
         """刷新自定义指令列表。"""
@@ -363,9 +274,6 @@ class SettingsPanel(QWidget):
         self._dialogue_check.setChecked(
             self._current.get("behavior.dialogue_enabled", True)
         )
-        self._voice_wake_check.setChecked(
-            self._current.get("voice_wake.enabled", True)
-        )
 
         # 更新标签显示
         self._size_label.setText(f"{self._size_slider.value()}%")
@@ -373,22 +281,18 @@ class SettingsPanel(QWidget):
 
     def _save_settings(self):
         """保存当前临时设置到配置文件。"""
-        # 只保存面板管理的 key，不覆盖 custom_voice_commands
+        # 只保存面板管理的 key
         _PANEL_KEYS = (
-            "window.size_scale", "window.opacity", "window.always_on_top",
-            "behavior.auto_move", "behavior.dialogue_enabled",
-            "voice_wake.enabled",
+            "window.size_scale",
+            "window.opacity",
+            "window.always_on_top",
+            "behavior.auto_move",
+            "behavior.dialogue_enabled",
         )
         for key in _PANEL_KEYS:
             if key in self._current:
                 self._config.set(key, self._current[key])
         self._config.save()
-
-        # 同步 custom_voice_commands（由 CustomCommandManager 直接管理）
-        if self._custom_commands:
-            data = [cmd.to_dict() for cmd in self._custom_commands.get_all()]
-            self._config.set("custom_voice_commands", data)
-            self._config.save()
 
         self._initial = self._current.copy()
         self._dirty = False
@@ -526,22 +430,9 @@ class CustomCommandDialog(QDialog):
         action_type = self._action_combo.currentData()
         if action_type == "open_url":
             if not target.startswith(("http://", "https://")):
-                QMessageBox.warning(self, "输入错误", "链接必须以 http:// 或 https:// 开头")
+                QMessageBox.warning(
+                    self, "输入错误", "链接必须以 http:// 或 https:// 开头"
+                )
                 return
 
         self.accept()
-
-    def get_command(self):
-        """获取编辑后的指令。"""
-        from src.voice.custom_commands import CustomCommand
-
-        phrases_text = self._phrases_edit.text().strip()
-        phrases = [p.strip() for p in phrases_text.split(",") if p.strip()]
-
-        return CustomCommand(
-            phrases=phrases,
-            action_type=self._action_combo.currentData(),
-            action_target=self._target_edit.text().strip(),
-            response=self._response_edit.text().strip(),
-            enabled=True if not self._is_edit else self._command.enabled,
-        )

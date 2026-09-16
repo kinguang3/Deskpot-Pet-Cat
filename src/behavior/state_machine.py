@@ -7,7 +7,6 @@
 管理状态、转换条件、优先级。
 """
 
-from typing import Callable
 from PySide6.QtCore import QObject, Signal
 
 from src.core.event_bus import EventBus

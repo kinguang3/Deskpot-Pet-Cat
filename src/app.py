@@ -33,12 +33,7 @@ from src.behavior.states import (
 from src.behavior.controller import BehaviorController
 from src.behavior.emotion import EmotionSystem
 from src.behavior.memory import Memory
-from src.voice import VoiceWakeManager
-from src.voice.command_parser import Intent
-from src.voice.commands.time_command import get_time_response
-from src.voice.commands.open_browser_command import open_browser
-from src.voice.custom_commands import CustomCommandManager
-from src.voice import action_handler
+
 from src.interaction.mouse import MouseInteraction
 from src.dialogue.bubble import DialogueBubble
 from src.dialogue.content import DialogueContent
@@ -92,13 +87,6 @@ class App(QObject):
 
         # 记忆系统（持久化互动数据）
         self._memory = Memory(self._storage)
-
-        # 语音唤醒系统
-        self._voice_wake = VoiceWakeManager()
-
-        # 自定义语音指令
-        self._custom_commands = CustomCommandManager()
-        self._voice_wake.set_custom_manager(self._custom_commands)
 
         # 交互系统
         self._mouse_interaction = MouseInteraction()
@@ -172,12 +160,6 @@ class App(QObject):
         # 状态变化事件
         self._event_bus.on("state.changed", self._on_state_changed)
 
-        # 语音唤醒事件
-        self._event_bus.on("voice.wake_detected", self._on_voice_wake)
-
-        # 语音命令事件
-        self._event_bus.on("voice.command_detected", self._on_voice_command)
-
     def start(self):
         """启动应用。"""
         logger.info("Application starting...")
@@ -204,12 +186,6 @@ class App(QObject):
 
         # 启动情感系统
         self._emotion_system.start()
-
-        # 启动语音唤醒
-        self._voice_wake.start()
-
-        # 启动时非 sleep 状态，开启始终命令模式
-        self._voice_wake.set_command_mode(True)
 
         # 显示问候语
         QTimer.singleShot(1000, self._show_greeting)
@@ -256,10 +232,7 @@ class App(QObject):
     def _show_settings(self):
         """显示设置面板。"""
         if self._settings_panel is None:
-            self._settings_panel = SettingsPanel(
-                voice_manager=self._voice_wake,
-                custom_commands=self._custom_commands,
-            )
+            self._settings_panel = SettingsPanel()
             self._settings_panel.settings_changed.connect(self._apply_config)
             self._settings_panel.preview_changed.connect(
                 self._apply_settings_preview
@@ -267,13 +240,11 @@ class App(QObject):
         self._settings_panel._refresh_custom_commands()
         self._settings_panel.show()
         self._settings_panel.raise_()
-        self._settings_panel._update_voice_wake_ui()
         logger.debug("Settings panel opened")
 
     def _quit(self):
         """退出应用。"""
         logger.info("Application quitting...")
-        self._voice_wake.stop()
         self._behavior_controller.stop()
         self._emotion_system.stop()
         self._memory.save()
@@ -394,61 +365,6 @@ class App(QObject):
     def _on_state_changed(self, data: dict):
         """状态变化回调。"""
         new = data.get("to", "")
-
-        # 非 sleep 状态：开启始终命令模式（直接说命令即可）
-        if new != "sleep":
-            self._voice_wake.set_command_mode(True)
-        else:
-            # sleep 状态：关闭命令模式，需要「嘿」唤醒
-            self._voice_wake.set_command_mode(False)
-
-    def _on_voice_wake(self, data: dict):
-        """语音唤醒回调。"""
-        # 显示唤醒回应
-        if self._config.get("behavior.dialogue_enabled", True):
-            text = self._dialogue_content.get_wake_line()
-            self._show_dialogue(text)
-
-        current = self._state_machine.current_state_name
-
-        # 从 sleep 唤醒：进入 5 秒命令窗口
-        if current == "wake":
-            self._voice_wake.enter_command_mode()
-            self._command_window_active = True
-            self._command_window_timer.start(5000)
-            logger.info("[Voice] Command window started (5s)")
-
-    def _on_voice_command(self, data: dict):
-        """语音命令回调。"""
-        intent = data.get("intent", "unknown")
-        logger.info("[Voice] Command received: %s", intent)
-
-        if intent == Intent.TIME_QUERY.value:
-            response = get_time_response()
-            if self._config.get("behavior.dialogue_enabled", True):
-                self._show_dialogue(response)
-
-        elif intent == Intent.OPEN_BROWSER.value:
-            success, response = open_browser()
-            if self._config.get("behavior.dialogue_enabled", True):
-                self._show_dialogue(response)
-
-        elif intent == Intent.CUSTOM_COMMAND.value:
-            action_type = data.get("action_type", "")
-            action_target = data.get("action_target", "")
-            custom_response = data.get("response", "")
-            logger.info(
-                "[Voice] Custom command: type=%s, target=%s",
-                action_type,
-                action_target,
-            )
-            success, response = action_handler.execute(action_type, action_target, custom_response)
-            if self._config.get("behavior.dialogue_enabled", True):
-                self._show_dialogue(response)
-
-        # 如果在命令窗口期内，处理完命令后关闭窗口
-        if self._command_window_active:
-            self._end_command_window()
 
     def _on_command_window_timeout(self):
         """命令窗口超时 → 退出语音交互。"""

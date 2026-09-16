@@ -6,7 +6,7 @@
 管理 Nina 的位置、朝向、状态，以及与窗口和动画的协调。
 """
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject
 
 from src.core.event_bus import EventBus
 from src.core.window import PetWindow

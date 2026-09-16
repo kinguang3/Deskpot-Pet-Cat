@@ -31,9 +31,5 @@
     "name": "Nina",
     "default_x": -1,
     "default_y": -1
-  },
-  "audio": {
-    "enabled": true,
-    "volume": 0.5
   }
 }
