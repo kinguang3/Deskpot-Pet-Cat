@@ -33,7 +33,7 @@
     "default_y": -1
   },
   "voice": {
-    "enabled": false,
+    "enabled": true,
     "provider": "assemblyai",
     "api_key": "",
     "language": "zh",

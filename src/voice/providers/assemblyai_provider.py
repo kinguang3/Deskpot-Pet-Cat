@@ -87,8 +87,9 @@ class AssemblyAIProvider(BaseVoiceProvider):
             return empty
 
         try:
+            sentiment = self._language == "en"
             config = aai.TranscriptionConfig(
-                sentiment_analysis=True,
+                sentiment_analysis=sentiment,
                 language_code=self._language,
             )
             transcriber = aai.Transcriber()
@@ -131,7 +132,8 @@ class AssemblyAIProvider(BaseVoiceProvider):
         segments = []
         confidences = []
 
-        for item in transcript.sentiment_analysis_results or []:
+        results = getattr(transcript, "sentiment_analysis_results", None) or []
+        for item in results:
             seg = {
                 "text": item.text or "",
                 "sentiment": (item.sentiment or "NEUTRAL").upper(),
