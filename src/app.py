@@ -41,6 +41,7 @@ from src.ui.tray import SystemTray
 from src.ui.settings import SettingsPanel
 from src.utils.storage import Storage
 from src.utils.logger import get_logger
+from src.voice import VoiceManager
 
 logger = get_logger(__name__)
 
@@ -88,6 +89,9 @@ class App(QObject):
         # 记忆系统（持久化互动数据）
         self._memory = Memory(self._storage)
 
+        # 语音情绪管理（AssemblyAI）
+        self._voice_manager = VoiceManager()
+
         # 交互系统
         self._mouse_interaction = MouseInteraction()
 
@@ -101,14 +105,6 @@ class App(QObject):
         self._dialogue_timer = QTimer(self)
         self._dialogue_timer.timeout.connect(self._random_dialogue)
         self._dialogue_timer.start(random.randint(30000, 60000))
-
-        # 语音命令窗口定时器（唤醒后 5 秒内接收命令）
-        self._command_window_timer = QTimer(self)
-        self._command_window_timer.setSingleShot(True)
-        self._command_window_timer.timeout.connect(
-            self._on_command_window_timeout
-        )
-        self._command_window_active = False
 
         # 连接事件
         self._connect_events()
@@ -187,6 +183,13 @@ class App(QObject):
         # 启动情感系统
         self._emotion_system.start()
 
+        # 启动语音情绪管理（可选，失败不影响主程序）
+        voice_ok = self._voice_manager.start()
+        if voice_ok:
+            logger.info("VoiceManager started")
+        else:
+            logger.info("VoiceManager not started (disabled or unavailable)")
+
         # 显示问候语
         QTimer.singleShot(1000, self._show_greeting)
 
@@ -237,7 +240,6 @@ class App(QObject):
             self._settings_panel.preview_changed.connect(
                 self._apply_settings_preview
             )
-        self._settings_panel._refresh_custom_commands()
         self._settings_panel.show()
         self._settings_panel.raise_()
         logger.debug("Settings panel opened")
@@ -245,6 +247,7 @@ class App(QObject):
     def _quit(self):
         """退出应用。"""
         logger.info("Application quitting...")
+        self._voice_manager.stop()
         self._behavior_controller.stop()
         self._emotion_system.stop()
         self._memory.save()
@@ -365,19 +368,6 @@ class App(QObject):
     def _on_state_changed(self, data: dict):
         """状态变化回调。"""
         new = data.get("to", "")
-
-    def _on_command_window_timeout(self):
-        """命令窗口超时 → 退出语音交互。"""
-        logger.info("[Voice] Command window timeout")
-        self._end_command_window()
-
-    def _end_command_window(self):
-        """退出命令窗口模式。"""
-        if self._command_window_active:
-            self._command_window_active = False
-            self._command_window_timer.stop()
-            self._voice_wake.exit_command_mode()
-            logger.info("[Voice] Command window ended")
 
     def eventFilter(self, watched, event):
         """事件过滤器"""

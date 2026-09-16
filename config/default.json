@@ -31,5 +31,18 @@
     "name": "Nina",
     "default_x": -1,
     "default_y": -1
+  },
+  "voice": {
+    "enabled": false,
+    "provider": "assemblyai",
+    "api_key": "",
+    "language": "zh",
+    "sample_rate": 16000,
+    "channels": 1,
+    "min_confidence": 0.5,
+    "segment_mode": "vad",
+    "segment_max_seconds": 5.0,
+    "segment_min_seconds": 1.0,
+    "segment_silence_ms": 800
   }
 }

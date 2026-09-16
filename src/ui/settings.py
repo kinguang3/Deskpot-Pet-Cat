@@ -15,13 +15,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QPushButton,
     QGroupBox,
-    QMessageBox,
-    QDialog,
-    QLineEdit,
-    QComboBox,
-    QListWidget,
-    QListWidgetItem,
-    QDialogButtonBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -38,10 +31,9 @@ class SettingsPanel(QWidget):
     settings_changed = Signal()
     preview_changed = Signal(dict)
 
-    def __init__(self, custom_commands=None, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self._updating = False
-        self._custom_commands = custom_commands
 
         self._config = ConfigManager()
         self._event_bus = EventBus()
@@ -51,7 +43,7 @@ class SettingsPanel(QWidget):
         self._dirty = False
 
         self.setWindowTitle("GBC Nina - 设置")
-        self.setFixedSize(320, 520)
+        self.setFixedSize(320, 400)
         self.setWindowFlags(
             Qt.WindowType.WindowCloseButtonHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -59,7 +51,6 @@ class SettingsPanel(QWidget):
 
         self._setup_ui()
         self._load_settings()
-        self._refresh_custom_commands()
         logger.debug("SettingsPanel created")
 
     def _setup_ui(self):
@@ -117,32 +108,6 @@ class SettingsPanel(QWidget):
         behavior_group.setLayout(behavior_layout)
         layout.addWidget(behavior_group)
 
-        # 自定义语音指令
-        if self._custom_commands:
-            custom_group = QGroupBox("自定义语音指令")
-            custom_layout = QVBoxLayout()
-
-            # 指令列表
-            self._custom_list = QListWidget()
-            self._custom_list.setMaximumHeight(100)
-            custom_layout.addWidget(self._custom_list)
-
-            # 操作按钮
-            custom_btn_layout = QHBoxLayout()
-            self._custom_add_btn = QPushButton("添加")
-            self._custom_edit_btn = QPushButton("编辑")
-            self._custom_del_btn = QPushButton("删除")
-            self._custom_add_btn.clicked.connect(self._on_custom_add)
-            self._custom_edit_btn.clicked.connect(self._on_custom_edit)
-            self._custom_del_btn.clicked.connect(self._on_custom_del)
-            custom_btn_layout.addWidget(self._custom_add_btn)
-            custom_btn_layout.addWidget(self._custom_edit_btn)
-            custom_btn_layout.addWidget(self._custom_del_btn)
-            custom_layout.addLayout(custom_btn_layout)
-
-            custom_group.setLayout(custom_layout)
-            layout.addWidget(custom_group)
-
         # 按钮
         btn_layout = QHBoxLayout()
         self._save_btn = QPushButton("保存")
@@ -185,66 +150,6 @@ class SettingsPanel(QWidget):
 
     def _on_dialogue_changed(self, state):
         self._apply_preview("behavior.dialogue_enabled", bool(state))
-
-    def _refresh_custom_commands(self):
-        """刷新自定义指令列表。"""
-        if not self._custom_commands:
-            return
-        self._custom_list.clear()
-        for cmd in self._custom_commands.get_all():
-            phrases_text = ", ".join(cmd.phrases)
-            status = "✓" if cmd.enabled else "✗"
-            label = f"{status} {phrases_text} → {cmd.action_type}:{cmd.action_target[:30]}"
-            item = QListWidgetItem(label)
-            item.setData(Qt.ItemDataRole.UserRole, cmd.id)
-            self._custom_list.addItem(item)
-
-    def _on_custom_add(self):
-        """添加自定义指令。"""
-        dialog = CustomCommandDialog(parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            cmd = dialog.get_command()
-            ok, err = self._custom_commands.add(cmd)
-            if not ok:
-                QMessageBox.warning(self, "添加失败", err)
-            else:
-                self._refresh_custom_commands()
-
-    def _on_custom_edit(self):
-        """编辑自定义指令。"""
-        current = self._custom_list.currentItem()
-        if not current:
-            return
-        cmd_id = current.data(Qt.ItemDataRole.UserRole)
-        all_cmds = self._custom_commands.get_all()
-        cmd = next((c for c in all_cmds if c.id == cmd_id), None)
-        if not cmd:
-            return
-        dialog = CustomCommandDialog(command=cmd, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            updated = dialog.get_command()
-            updated.id = cmd_id
-            ok, err = self._custom_commands.update(updated)
-            if not ok:
-                QMessageBox.warning(self, "编辑失败", err)
-            else:
-                self._refresh_custom_commands()
-
-    def _on_custom_del(self):
-        """删除自定义指令。"""
-        current = self._custom_list.currentItem()
-        if not current:
-            return
-        cmd_id = current.data(Qt.ItemDataRole.UserRole)
-        reply = QMessageBox.question(
-            self,
-            "确认删除",
-            "确定要删除这条语音指令吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            self._custom_commands.delete(cmd_id)
-            self._refresh_custom_commands()
 
     def _apply_preview(self, key, value):
         """更新临时配置，发出预览信号，"""
@@ -355,84 +260,3 @@ class SettingsPanel(QWidget):
             self._dirty = False
 
         event.accept()
-
-
-class CustomCommandDialog(QDialog):
-    """自定义语音指令编辑对话框。"""
-
-    def __init__(self, command=None, parent=None):
-        super().__init__(parent)
-        self._command = command
-        self._is_edit = command is not None
-
-        self.setWindowTitle("编辑指令" if self._is_edit else "添加指令")
-        self.setFixedSize(300, 280)
-
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
-        layout.setContentsMargins(16, 16, 16, 16)
-
-        # 触发语句
-        layout.addWidget(QLabel("触发语句（逗号分隔）:"))
-        self._phrases_edit = QLineEdit()
-        self._phrases_edit.setPlaceholderText("例如: 打开百度,百度搜索")
-        layout.addWidget(self._phrases_edit)
-
-        # 动作类型
-        layout.addWidget(QLabel("动作类型:"))
-        self._action_combo = QComboBox()
-        self._action_combo.addItem("打开网页", "open_url")
-        self._action_combo.addItem("打开应用", "open_app")
-        layout.addWidget(self._action_combo)
-
-        # 动作目标
-        layout.addWidget(QLabel("动作目标:"))
-        self._target_edit = QLineEdit()
-        self._target_edit.setPlaceholderText("例如: https://www.baidu.com")
-        layout.addWidget(self._target_edit)
-
-        # 回复语句
-        layout.addWidget(QLabel("回复语句（可选）:"))
-        self._response_edit = QLineEdit()
-        self._response_edit.setPlaceholderText("留空则使用默认回复")
-        layout.addWidget(self._response_edit)
-
-        # 按钮
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel
-        )
-        button_box.accepted.connect(self._validate_and_accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
-
-        # 填充编辑模式数据
-        if self._is_edit:
-            self._phrases_edit.setText(", ".join(command.phrases))
-            idx = self._action_combo.findData(command.action_type)
-            if idx >= 0:
-                self._action_combo.setCurrentIndex(idx)
-            self._target_edit.setText(command.action_target)
-            self._response_edit.setText(command.response)
-
-    def _validate_and_accept(self):
-        """验证输入后关闭。"""
-        phrases_text = self._phrases_edit.text().strip()
-        if not phrases_text:
-            QMessageBox.warning(self, "输入错误", "触发语句不能为空")
-            return
-
-        target = self._target_edit.text().strip()
-        if not target:
-            QMessageBox.warning(self, "输入错误", "动作目标不能为空")
-            return
-
-        action_type = self._action_combo.currentData()
-        if action_type == "open_url":
-            if not target.startswith(("http://", "https://")):
-                QMessageBox.warning(
-                    self, "输入错误", "链接必须以 http:// 或 https:// 开头"
-                )
-                return
-
-        self.accept()
