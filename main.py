@@ -7,6 +7,9 @@ import platform
 # 确保项目根目录在 sys.path 中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from PySide6.QtWidgets import QApplication
 from src.utils.logger import setup_logger, get_logger
 

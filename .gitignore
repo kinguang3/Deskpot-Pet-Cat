@@ -29,6 +29,9 @@ Desktop.ini
 # User config (keep default, ignore user overrides)
 config/user.json
 
+# Environment variables (API keys, secrets)
+.env
+
 # Data (runtime data, not source)
 data/
 
