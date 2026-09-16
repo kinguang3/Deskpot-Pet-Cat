@@ -71,19 +71,18 @@ GBC Nina 的核心目标是提供一个 **有生命感** 的桌面伴侣，而�
 
 ### 1. 系统要求
 
-| 项目 | 要求 |
-|------|------|
-| 操作系统 | Windows 10/11 |
-| Python | 3.10 或更高版本 |
+| 项目     | 要求                       |
+| -------- | -------------------------- |
+| 操作系统 | Windows 10/11              |
+| Python   | 3.10 或更高版本            |
 | 磁盘空间 | ~10 MB（不含 Python 环境） |
 
 ### 2. Python 包依赖
 
-| 包名 | 版本 | 用途 |
-|------|------|------|
-| PySide6 | >= 6.5.0 | Qt for Python，提供透明窗口、动画、系统托盘支持 |
-| vosk | >= 0.3.45 | 离线语音识别引擎（首次运行自动下载中文模型 ~44MB） |
-| sounddevice | >= 0.5.0 | 麦克风音频采集 |
+| 包名       | 版本     | 用途                                            |
+| ---------- | -------- | ----------------------------------------------- |
+| PySide6    | >= 6.5.0 | Qt for Python，提供透明窗口、动画、系统托盘支持 |
+| assemblyai | >= 1.5.4 | AssemblyAI 的官方 Python SDK                    |
 
 安装命令：
 
@@ -134,50 +133,37 @@ python main.py
 
 ### 1. 鼠标操作
 
-| 操作 | 效果 |
-|------|------|
-| **拖动** | 移动 Nina 的位置 |
-| **单击** | Nina 会看你一眼并说话 |
-| **双击** | 触发特殊动画（typing / watching） |
-| **右键** | 显示对话 |
-| **鼠标悬停** | 30% 概率显示对话 |
-| **长时间不互动** | Nina 会自己睡着 |
+| 操作             | 效果                              |
+| ---------------- | --------------------------------- |
+| **拖动**         | 移动 Nina 的位置                  |
+| **单击**         | Nina 会看你一眼并说话             |
+| **双击**         | 触发特殊动画（typing / watching） |
+| **右键**         | 显示对话                          |
+| **鼠标悬停**     | 30% 概率显示对话                  |
+| **长时间不互动** | Nina 会自己睡着                   |
 
-### 2. 语音命令
-
-| 操作 | 说明 |
-|------|------|
-| **"嘿，Nina"** | 唤醒 Nina，进入 5 秒命令窗口 |
-| **"几点了"** | 查询当前时间 |
-| **"打开浏览器"** | 打开默认浏览器 |
-| **自定义指令** | 在设置面板中添加自定义触发词和动作 |
-
-非 sleep 状态下可直接说命令，无需先说唤醒词。
-
-### 3. 系统托盘
+### 2. 系统托盘
 
 右下角猫爪图标，右键菜单：
 
-| 菜单项 | 功能 |
-|--------|------|
+| 菜单项    | 功能                 |
+| --------- | -------------------- |
 | 显示 Nina | 显示窗口并居中到底部 |
-| 隐藏 Nina | 隐藏窗口 |
-| 设置 | 打开设置面板 |
-| 退出 | 关闭程序 |
+| 隐藏 Nina | 隐藏窗口             |
+| 设置      | 打开设置面板         |
+| 退出      | 关闭程序             |
 
 双击托盘图标 = 显示窗口。
 
-### 4. 设置面板
+### 3. 设置面板
 
-| 设置项 | 范围 | 默认值 | 说明 |
-|--------|------|--------|------|
-| 大小 | 50% ~ 200% | 100% | 窗口缩放比例 |
-| 透明度 | 30% ~ 100% | 95% | 窗口透明度 |
-| 始终置顶 | 开/关 | 开 | 窗口是否始终在最上层 |
-| 自动移动 | 开/关 | 开 | Nina 是否自主走动 |
-| 显示对话 | 开/关 | 开 | 是否显示对话气泡 |
-| 语音唤醒 | 开/关 | 开 | 语音唤醒功能（需麦克风） |
-| 自定义语音指令 | — | — | 添加/编辑/删除自定义语音指令 |
+| 设置项   | 范围       | 默认值 | 说明                 |
+| -------- | ---------- | ------ | -------------------- |
+| 大小     | 50% ~ 200% | 100%   | 窗口缩放比例         |
+| 透明度   | 30% ~ 100% | 95%    | 窗口透明度           |
+| 始终置顶 | 开/关      | 开     | 窗口是否始终在最上层 |
+| 自动移动 | 开/关      | 开     | Nina 是否自主走动    |
+| 显示对话 | 开/关      | 开     | 是否显示对话气泡     |
 
 设置修改后点击"保存"立即生效，配置持久化到 `config/user.json`。
 
@@ -261,18 +247,6 @@ GBC-Nina/
     └── utils/                     # 工具类
         ├── __init__.py
         └── storage.py             # JSON数据持久化
-
-    └── voice/                     # 语音系统
-        ├── __init__.py
-        ├── wake_detector.py       # Vosk 离线唤醒词检测
-        ├── voice_manager.py       # 语音生命周期管理
-        ├── command_parser.py      # 语音命令意图解析
-        ├── custom_commands.py     # 自定义语音指令管理
-        ├── action_handler.py      # 安全动作执行器
-        └── commands/              # 内置命令实现
-            ├── __init__.py
-            ├── time_command.py
-            └── open_browser_command.py
 ```
 
 </details>
@@ -353,6 +327,7 @@ mousePressEvent/MoveEvent/ReleaseEvent → 拖动逻辑
 **原因**: 未安装依赖或未激活虚拟环境。
 
 **解决方案**:
+
 ```bash
 # 创建并激活虚拟环境
 python -m venv .venv
@@ -373,9 +348,11 @@ python main.py
 **可能原因**: 精灵图路径错误或资源文件缺失。
 
 **解决方案**:
+
 - 确认 `assets/` 目录下有完整的 PNG 文件。
 - 检查控制台输出是否有 `[SpriteLoader]` 相关日志。
 - 尝试手动测试精灵图加载：
+
 ```bash
 python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_all()"
 ```
@@ -388,6 +365,7 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 **可能原因**: 程序启动后遇到异常退出。
 
 **解决方案**:
+
 - 在命令行运行 `python main.py` 查看错误输出。
 - 检查是否有其他程序占用或杀毒软件拦截。
 
@@ -401,6 +379,7 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 **可能原因**: 行为状态机未正确启动或配置中 `auto_move` 为 false。
 
 **解决方案**:
+
 - 检查 `config/default.json` 中 `behavior.auto_move` 是否为 `true`。
 - 查看控制台是否有 `[StateMachine]` 相关日志。
 
@@ -412,6 +391,7 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 **可能原因**: 配置中 `dialogue_enabled` 为 false，或对话内容为空。
 
 **解决方案**:
+
 - 检查 `config/default.json` 中 `behavior.dialogue_enabled` 是否为 `true`。
 - 对话有 30~60 秒随机间隔，耐心等待或单击 Nina 触发。
 
@@ -421,6 +401,7 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 <summary><b>Q6: 设置修改后不生效</b></summary>
 
 **解决方案**:
+
 - 修改后必须点击"保存"按钮。
 - 部分设置（如大小）需要重启程序。
 
@@ -432,6 +413,7 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 <summary><b>Q7: 如何添加新的动画？</b></summary>
 
 **步骤**:
+
 1. 将动画帧 PNG 文件放入 `assets/` 目录，命名为 `cat_xxx1.png`, `cat_xxx2.png`, ...
 2. 在 `src/animation/sprites.py` 的 `ANIMATION_MAP` 中添加映射：`"xxx": "cat_xxx"`
 3. 在 `src/animation/manager.py` 的 `_fps_map` 中添加帧率：`"xxx": 6`
@@ -444,6 +426,7 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 <summary><b>Q8: 如何添加新的对话内容？</b></summary>
 
 **步骤**:
+
 1. 在 `src/dialogue/content.py` 的 `DialogueContent` 类中添加新的列表
 2. 创建对应的 `get_xxx_line()` 方法
 3. 在需要触发的地方通过 EventBus 发送事件或直接调用
@@ -458,10 +441,12 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 <summary><b>Q7: 语音唤醒不工作</b></summary>
 
 **可能原因**:
+
 - 没有麦克风或麦克风权限被拒绝
 - Vosk 模型未下载（首次运行会自动下载 ~44MB）
 
 **解决方案**:
+
 - 确认麦克风已连接且权限正常
 - 查看控制台是否有 `[Voice]` 相关日志
 - 检查 `models/` 目录下是否有 `vosk-model-small-cn-0.22` 文件夹
@@ -472,10 +457,12 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 <summary><b>Q8: 说了命令但没反应</b></summary>
 
 **可能原因**:
+
 - 处于 sleep 状态，需要先说"嘿，Nina"唤醒
 - Vosk 识别文本与命令不匹配
 
 **解决方案**:
+
 - 非 sleep 状态下可直接说命令
 - sleep 状态下先说唤醒词，5 秒内说命令
 - 查看控制台 `[Voice Recognized]` 日志确认识别结果
@@ -486,12 +473,14 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 <summary><b>Q9: 如何添加自定义语音指令？</b></summary>
 
 **步骤**:
+
 1. 右键托盘图标 → 设置
 2. 在"自定义语音指令"区域点击"添加"
 3. 输入触发语句（逗号分隔）、选择动作类型、输入目标
 4. 点击确定，然后点击"保存"
 
 支持的动作类型：
+
 - **打开网页**: 输入 URL（如 `https://www.baidu.com`）
 - **打开应用**: 输入应用完整路径（如 `C:\Windows\notepad.exe`）
 
@@ -517,9 +506,10 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 
 本项目依赖的第三方组件：
 
-| 组件 | 许可证 |
-|------|--------|
+| 组件                    | 许可证             |
+| ----------------------- | ------------------ |
 | PySide6 (Qt for Python) | LGPL-3.0 / GPL-3.0 |
+| assemblyai              | MIT                |
 
 ---
 
