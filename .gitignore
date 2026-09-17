@@ -40,5 +40,4 @@ logs/
 *.log
 
 # Models (downloaded, not source)
-sensevoice-small-q8.gguf
 VOICE_WAKE_DEBUG_LOG.md
