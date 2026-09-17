@@ -49,6 +49,7 @@
       "exe_path": "bin/llama-funasr-sensevoice.exe",
       "model_path": "models/sensevoice-small-q8.gguf",
       "vad_path": "models/fsmn-vad.gguf",
+      "temp_path": "temp",
       "timeout": 30.0
     }
   }
