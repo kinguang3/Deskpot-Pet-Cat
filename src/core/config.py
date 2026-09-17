@@ -3,8 +3,14 @@
 
 """配置管理模块
 
-负责加载、读取、保存配置。
-配置优先级：用户配置 > 默认配置。
+负责加载、读取、保存配置
+配置优先级：用户配置 > 默认配置
+
+路径处理约定：
+- 配置文件中的路径可以写成相对路径（相对于项目根目录）或绝对路径
+- 读取路径类配置时，统一使用 ConfigManager.get_path()
+  它会自动把相对路径基于项目根目录解析成绝对路径
+  这样程序无论从哪个工作目录启动都能正确找到文件
 """
 
 import json
@@ -16,7 +22,7 @@ logger = get_logger(__name__)
 
 
 class ConfigManager:
-    """管理应用配置的单例式管理器。"""
+    """管理应用配置的单例式管理器"""
 
     _instance = None
 
@@ -38,8 +44,22 @@ class ConfigManager:
         self._data: dict = {}
         self._load()
 
+    # 基础属性
+
+    @property
+    def base_dir(self) -> Path:
+        """项目根目录的绝对路径"""
+        return self._base_dir
+
+    @property
+    def config_dir(self) -> Path:
+        """配置文件所在目录的绝对路径"""
+        return self._config_dir
+
+    # 加载与保存
+
     def _load(self):
-        """加载配置，用户配置覆盖默认配置。"""
+        """加载配置，用户配置覆盖默认配置"""
         self._data = self._load_json(self._default_config_path)
         if self._user_config_path.exists():
             user_cfg = self._load_json(self._user_config_path)
@@ -47,6 +67,11 @@ class ConfigManager:
             logger.info("User config loaded and merged")
         else:
             logger.debug("No user config found, using defaults")
+
+    def reload(self):
+        """重新从磁盘加载配置，丢弃当前内存中的数据"""
+        self._load()
+        logger.info("Config reloaded")
 
     def _load_json(self, path: Path) -> dict:
         try:
@@ -60,7 +85,7 @@ class ConfigManager:
             return {}
 
     def _deep_merge(self, base: dict, override: dict):
-        """将 override 的值深度合并到 base 中。"""
+        """将 override 的值深度合并到 base 中"""
         for key, value in override.items():
             if (
                 key in base
@@ -71,8 +96,10 @@ class ConfigManager:
             else:
                 base[key] = value
 
+    # 读取
+
     def get(self, key_path: str, default=None):
-        """通过点分路径获取配置值。
+        """通过点分路径获取配置值
 
         例如: config.get("window.opacity")
         """
@@ -85,8 +112,38 @@ class ConfigManager:
                 return default
         return node
 
+    def get_path(self, key_path: str, default=None):
+        """读取路径类配置，并解析为绝对路径
+
+        规则：
+        - 空值或 None 返回 None
+        - 以 ~ 开头会展开为用户主目录
+        - 绝对路径原样返回（做一次 resolve 规范化）
+        - 相对路径基于项目根目录解析
+
+        例如:
+            config.get_path("voice.sensevoice.exe_path")
+        """
+        value = self.get(key_path, default)
+        if value is None or value == "":
+            return None
+
+        p = Path(str(value)).expanduser()
+        if not p.is_absolute():
+            p = self._base_dir / p
+
+        try:
+            return p.resolve()
+        except OSError:
+            # 某些平台在路径不存在时 resolve 也可能抛异常
+            # 退回到绝对路径拼接结果
+            logger.warning("Failed to resolve path: %s", p)
+            return p.absolute()
+
+    # 写入
+
     def set(self, key_path: str, value):
-        """通过点分路径设置配置值。"""
+        """通过点分路径设置配置值"""
         keys = key_path.split(".")
         node = self._data
         for key in keys[:-1]:
@@ -96,7 +153,7 @@ class ConfigManager:
         node[keys[-1]] = value
 
     def save(self):
-        """保存用户配置到 user.json。"""
+        """保存用户配置到 user.json"""
         try:
             self._config_dir.mkdir(parents=True, exist_ok=True)
             with open(self._user_config_path, "w", encoding="utf-8") as f:
@@ -106,5 +163,5 @@ class ConfigManager:
             logger.exception("Failed to save settings")
 
     def get_all(self) -> dict:
-        """返回完整配置副本。"""
+        """返回完整配置副本"""
         return json.loads(json.dumps(self._data))

@@ -145,9 +145,11 @@ class VoiceManager(QObject):
             )
 
             provider = SenseVoiceGGUFProvider(
-                exe_path=self._config.get("voice.sensevoice.exe_path", ""),
-                model_path=self._config.get("voice.sensevoice.model_path", ""),
-                vad_path=self._config.get("voice.sensevoice.vad_path", ""),
+                exe_path=self._config.get_path("voice.sensevoice.exe_path"),
+                model_path=self._config.get_path(
+                    "voice.sensevoice.model_path"
+                ),
+                vad_path=self._config.get_path("voice.sensevoice.vad_path"),
                 sample_rate=self._config.get("voice.sample_rate", 16000),
                 channels=self._config.get("voice.channels", 1),
                 timeout=self._config.get("voice.sensevoice.timeout", 30.0),

@@ -46,9 +46,9 @@
     "segment_silence_ms": 700,
     "segment_silence_rms_threshold": 400,
     "sensevoice": {
-      "exe_path": "./bin/llama-funasr-sensevoice.exe",
-      "model_path": "./models/sensevoice-small-q8.gguf",
-      "vad_path": "./models/fsmn-vad.gguf",
+      "exe_path": "bin/llama-funasr-sensevoice.exe",
+      "model_path": "models/sensevoice-small-q8.gguf",
+      "vad_path": "models/fsmn-vad.gguf",
       "timeout": 30.0
     }
   }
