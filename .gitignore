@@ -34,6 +34,7 @@ config/user.json
 
 # Data (runtime data, not source)
 data/
+temp/
 
 # Logs
 logs/

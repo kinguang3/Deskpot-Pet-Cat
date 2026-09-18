@@ -198,8 +198,6 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             "-a",
             wav_path,
             "--keep-tags",  # 保留语言/情绪/事件标签
-            "-t",
-            str(self._n_threads),
         ]
 
         logger.debug("Running SenseVoice: %s", " ".join(cmd))
