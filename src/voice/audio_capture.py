@@ -74,6 +74,13 @@ class AudioCapture:
             self._stream.start()
             self._running = True
             self._actual_sample_rate = self._stream.samplerate
+            if self._actual_sample_rate != self._sample_rate:
+                logger.warning(
+                    "Audio capture actual sample rate %dHz differs from "
+                    "requested %dHz",
+                    self._actual_sample_rate,
+                    self._sample_rate,
+                )
             logger.info(
                 "Audio capture started (%dHz, %dch, device=%s)",
                 self._actual_sample_rate,

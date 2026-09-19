@@ -26,6 +26,9 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+#: Provider（SenseVoice / AssemblyAI 情绪分析）期望的目标采样率
+TARGET_SAMPLE_RATE = 16000
+
 
 class VoiceManager(QObject):
     """语音情绪识别生命周期管理"""
@@ -102,6 +105,17 @@ class VoiceManager(QObject):
         self._capture.set_callback(self._on_audio)
 
         if not self._capture.start():
+            logger.error(
+                "音频采集启动失败，请检查麦克风是否支持 %dHz/%dch",
+                sample_rate,
+                channels,
+            )
+            self._cleanup(close_provider=True, shutdown_executor=True)
+            return False
+
+        # 校验设备实际采样率，必要时按实际值重建分段器与 Provider
+        if not self._ensure_sample_rate(sample_rate, channels):
+            self._capture.stop()
             self._cleanup(close_provider=True, shutdown_executor=True)
             return False
 
@@ -169,6 +183,58 @@ class VoiceManager(QObject):
             ),
             on_segment=self._on_segment,
         )
+
+    def _ensure_sample_rate(self, sample_rate: int, channels: int) -> bool:
+        """校验设备实际采样率；不一致时按实际值重建，无法满足时停止启动
+
+        Provider 依赖 16000Hz 输入，因此：
+        - 实际采样率不是 16000Hz：明确报错并返回 False
+        - 实际采样率是 16000Hz 但配置不是：按实际值重建分段器与 Provider
+        """
+        actual_rate = self._capture.actual_sample_rate
+        if actual_rate is None:
+            logger.error("无法获取音频设备实际采样率，语音模块停止启动")
+            return False
+
+        if actual_rate != sample_rate:
+            logger.warning(
+                "音频设备实际采样率 %dHz 与配置 %dHz 不一致",
+                actual_rate,
+                sample_rate,
+            )
+
+        if actual_rate != TARGET_SAMPLE_RATE:
+            logger.error(
+                "音频设备不支持 %dHz 目标采样率（实际 %dHz），"
+                "AssemblyAI/SenseVoice 需要 %dHz，语音模块停止启动",
+                TARGET_SAMPLE_RATE,
+                actual_rate,
+                TARGET_SAMPLE_RATE,
+            )
+            return False
+
+        if actual_rate == sample_rate:
+            return True
+
+        # 设备回落到目标采样率：重建分段器与 Provider 以匹配
+        self._sample_rate = actual_rate
+        self._create_segmenter(actual_rate, channels)
+        if self._provider is not None:
+            try:
+                self._provider.close()
+            except Exception:
+                logger.exception("Failed to close old provider")
+            self._provider = None
+        if not self._build_provider(
+            self._provider_name, actual_rate, channels
+        ):
+            logger.error("按实际采样率 %dHz 重建 Provider 失败", actual_rate)
+            return False
+        logger.info(
+            "Rebuilt segmenter/provider for actual sample rate %dHz",
+            actual_rate,
+        )
+        return True
 
     def _create_assemblyai(self, sample_rate: int, channels: int):
         """按配置创建 AssemblyAI Provider"""
