@@ -194,6 +194,47 @@ class EmotionSystem(QObject):
             self._sleepiness,
         )
 
+    def on_voice_emotion(self, emotion: str, sentiment: str, energy: float):
+        """语音情绪影响内部情感状态。
+
+        Args:
+            emotion: 检测到的情绪 (HAPPY, SAD, ANGRY, NEUTRAL)
+            sentiment: 情感倾向 (POSITIVE, NEGATIVE, NEUTRAL)
+            energy: 音频能量 (0.0~32767.0)
+        """
+        emotion = emotion.upper()
+        sentiment = sentiment.upper()
+        energy_factor = min(1.0, energy / 5000.0)  # 归一化到 0~1
+
+        if emotion == "HAPPY":
+            # 快乐情绪 → 增加快乐
+            boost = 3 + energy_factor * 5  # 3~8
+            self._happiness = min(100, self._happiness + boost)
+            logger.debug(
+                "Emotion: voice HAPPY -> happiness=%.1f (+%.1f)",
+                self._happiness,
+                boost,
+            )
+        elif emotion == "SAD":
+            # 悲伤情绪 → 减少快乐，增加依恋
+            self._happiness = max(0, self._happiness - 3)
+            self._affection = min(100, self._affection + 2)
+            logger.debug(
+                "Emotion: voice SAD -> happiness=%.1f, affection=%.1f",
+                self._happiness,
+                self._affection,
+            )
+        elif emotion == "ANGRY":
+            # 愤怒情绪 → 减少快乐
+            self._happiness = max(0, self._happiness - 2)
+            logger.debug(
+                "Emotion: voice ANGRY -> happiness=%.1f",
+                self._happiness,
+            )
+        else:
+            # NEUTRAL → 轻微增加好奇心
+            self._curiosity = min(100, self._curiosity + 0.5)
+
     def on_walk_complete(self):
         """行走完成 → 好奇心满足"""
         self._curiosity = max(0, self._curiosity - 2)

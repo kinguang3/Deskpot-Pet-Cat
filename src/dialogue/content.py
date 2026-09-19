@@ -174,6 +174,36 @@ class DialogueContent:
             "最喜欢和你玩了！",
         ]
 
+        # ─── 语音情绪反应 ───
+
+        self._voice_happy_lines = [
+            "你听起来很开心呢~",
+            "听到你开心我也开心！",
+            "嘿嘿~",
+            "心情真好！",
+        ]
+
+        self._voice_sad_lines = [
+            "你怎么了？",
+            "别难过哦~",
+            "我陪着你呢。",
+            "抱抱~",
+        ]
+
+        self._voice_angry_lines = [
+            "你生气了吗？",
+            "别生气啦~",
+            "深呼吸~",
+            "冷静一下哦。",
+        ]
+
+        self._voice_neutral_lines = [
+            "嗯？",
+            "我在听哦。",
+            "怎么了？",
+            "说吧说吧~",
+        ]
+
     # ─── 基础获取方法 ───
 
     def get_greeting(self) -> str:
@@ -266,3 +296,15 @@ class DialogueContent:
 
     def get_frequent_interaction_line(self) -> str:
         return random.choice(self._frequent_interaction_lines)
+
+    def get_voice_emotion_line(self, emotion: str) -> str:
+        """根据语音情绪返回反应台词。"""
+        emotion = emotion.upper()
+        if emotion == "HAPPY":
+            return random.choice(self._voice_happy_lines)
+        elif emotion == "SAD":
+            return random.choice(self._voice_sad_lines)
+        elif emotion == "ANGRY":
+            return random.choice(self._voice_angry_lines)
+        else:
+            return random.choice(self._voice_neutral_lines)

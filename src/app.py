@@ -156,6 +156,9 @@ class App(QObject):
         # 状态变化事件
         self._event_bus.on("state.changed", self._on_state_changed)
 
+        # 语音情绪事件
+        self._event_bus.on("voice.emotion_detected", self._on_voice_emotion)
+
     def start(self):
         """启动应用。"""
         logger.info("Application starting...")
@@ -368,6 +371,28 @@ class App(QObject):
     def _on_state_changed(self, data: dict):
         """状态变化回调。"""
         new = data.get("to", "")
+
+    def _on_voice_emotion(self, data: dict):
+        """处理语音情绪检测结果。"""
+        emotion = data.get("emotion", "NEUTRAL")
+        sentiment = data.get("sentiment", "NEUTRAL")
+        energy = data.get("energy", 0.0)
+        text = data.get("text", "")
+
+        # 影响内部情感系统（长期）
+        self._emotion_system.on_voice_emotion(emotion, sentiment, energy)
+
+        # 显示反应台词（短期）
+        if self._config.get("behavior.dialogue_enabled", True):
+            reaction = self._dialogue_content.get_voice_emotion_line(emotion)
+            self._show_dialogue(reaction)
+
+        logger.info(
+            "Voice emotion reacted: %s (energy=%.1f) -> %s",
+            emotion,
+            energy,
+            reaction if self._config.get("behavior.dialogue_enabled", True) else "no dialogue",
+        )
 
     def eventFilter(self, watched, event):
         """事件过滤器"""
