@@ -34,7 +34,7 @@
   },
   "voice": {
     "enabled": true,
-    "provider": "sensevoice",
+    "provider": "hybrid",
     "api_key": "",
     "language": "zh",
     "sample_rate": 16000,
@@ -60,12 +60,22 @@
     "segment_min_seconds": 1.0,
     "segment_silence_ms": 700,
     "segment_silence_rms_threshold": 400,
+    "assemblyai": {
+      "api_key": "",
+      "language": "en",
+      "timeout": 60
+    },
     "sensevoice": {
       "exe_path": "bin/llama-funasr-sensevoice.exe",
       "model_path": "models/sensevoice-small-q8.gguf",
       "vad_path": "models/fsmn-vad.gguf",
       "temp_path": "temp",
-      "timeout": 30.0
+      "timeout": 30.0,
+      "n_threads": 8
+    },
+    "hybrid": {
+      "allow_partial_provider": true,
+      "max_workers": 2
     }
   }
 }

@@ -174,15 +174,22 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
     # 内部实现
 
     def _check_ready(self) -> bool:
-        """校验三个关键文件是否存在"""
-        if not self._exe_path or not self._exe_path.is_file():
-            logger.error("Executable not found: %s", self._exe_path)
-            return False
-        if not self._model_path or not self._model_path.is_file():
-            logger.error("Model not found: %s", self._model_path)
-            return False
-        if not self._vad_path or not self._vad_path.is_file():
-            logger.error("VAD model not found: %s", self._vad_path)
+        """校验三个关键文件是否存在，缺失时一次性列出全部问题"""
+        checks = [
+            ("可执行文件", self._exe_path),
+            ("模型文件", self._model_path),
+            ("VAD 模型", self._vad_path),
+        ]
+        missing = [
+            f"{label}: {path}"
+            for label, path in checks
+            if not path or not path.is_file()
+        ]
+        if missing:
+            logger.error(
+                "SenseVoiceGGUFProvider 缺少以下文件，无法启动：\n- %s",
+                "\n- ".join(missing),
+            )
             return False
         return True
 

@@ -121,29 +121,31 @@ class HybridVoiceProvider(BaseVoiceProvider):
 
     def _warn_not_ready(self):
         """启动时明确提示哪些子 Provider 未就绪"""
-        missing = []
-        if self._assemblyai is None:
-            missing.append("assemblyai(未配置)")
-        elif not self._assemblyai.is_ready():
-            missing.append("assemblyai(配置或依赖缺失)")
-        if self._sensevoice is None:
-            missing.append("sensevoice(未配置)")
-        elif not self._sensevoice.is_ready():
-            missing.append("sensevoice(模型或可执行文件缺失)")
+        problems = []
+        for label, provider in (
+            ("assemblyai", self._assemblyai),
+            ("sensevoice", self._sensevoice),
+        ):
+            if provider is None:
+                problems.append(f"{label}(未配置)")
+            elif not provider.is_ready():
+                problems.append(f"{label}(未就绪)")
 
-        if not missing:
+        for problem in problems:
+            logger.warning("HybridVoiceProvider 子 Provider %s", problem)
+
+        if not problems:
             return
         if self._allow_partial:
             logger.warning(
-                "HybridVoiceProvider 部分降级：%s 未就绪，将仅使用可用的"
-                " Provider",
-                ", ".join(missing),
+                "HybridVoiceProvider 将降级为单 Provider 运行：%s",
+                ", ".join(problems),
             )
         else:
             logger.warning(
-                "HybridVoiceProvider 无法工作：%s 未就绪（可配置 "
+                "HybridVoiceProvider 无法工作：%s（可配置 "
                 "voice.hybrid.allow_partial_provider 允许降级）",
-                ", ".join(missing),
+                ", ".join(problems),
             )
 
     def _ensure_executor(self) -> concurrent.futures.ThreadPoolExecutor:
