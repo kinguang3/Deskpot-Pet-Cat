@@ -130,7 +130,6 @@ class AssemblyAIProvider(BaseVoiceProvider):
     def _normalize(self, transcript) -> dict:
         """把 AssemblyAI 的返回整理成统一结构"""
         segments = []
-        confidences = []
 
         results = getattr(transcript, "sentiment_analysis_results", None) or []
         for item in results:
@@ -142,13 +141,9 @@ class AssemblyAIProvider(BaseVoiceProvider):
                 "end_ms": int(item.end or 0),
             }
             segments.append(seg)
-            confidences.append(seg["confidence"])
 
         if segments:
-            # 取置信度最高的一句作为整体情感
-            best = max(segments, key=lambda s: s["confidence"])
-            overall_sentiment = best["sentiment"]
-            overall_conf = best["confidence"]
+            overall_sentiment, overall_conf = self._aggregate(segments)
         else:
             overall_sentiment = "NEUTRAL"
             overall_conf = 0.0
@@ -162,3 +157,29 @@ class AssemblyAIProvider(BaseVoiceProvider):
             "segments": segments,
             "raw": {"id": getattr(transcript, "id", None)},
         }
+
+    @staticmethod
+    def _aggregate(segments: list):
+        """按文本长度加权投票聚合整体情绪
+
+        - 票权 = 句子文本长度（空文本按 1 计），避免短句主导整体结果
+        - 整体置信度 = 该情绪下按票权加权的平均置信度
+        """
+        weights = {}
+        weighted_conf = {}
+        for seg in segments:
+            sentiment = seg.get("sentiment") or "NEUTRAL"
+            weight = max(len(seg.get("text") or ""), 1)
+            weights[sentiment] = weights.get(sentiment, 0) + weight
+            weighted_conf[sentiment] = weighted_conf.get(
+                sentiment, 0.0
+            ) + float(seg.get("confidence") or 0.0) * weight
+
+        if not weights:
+            return "NEUTRAL", 0.0
+
+        overall_sentiment = max(weights, key=weights.get)
+        overall_conf = (
+            weighted_conf[overall_sentiment] / weights[overall_sentiment]
+        )
+        return overall_sentiment, overall_conf
