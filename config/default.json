@@ -40,6 +40,21 @@
     "sample_rate": 16000,
     "channels": 1,
     "min_confidence": 0.5,
+    "emotion_map": {
+      "HAPPY": "HAPPY",
+      "SAD": "SAD",
+      "ANGRY": "ANGRY",
+      "NEUTRAL": "NEUTRAL",
+      "FEARFUL": "SAD",
+      "DISGUSTED": "ANGRY",
+      "SURPRISED": "HAPPY",
+      "EMO_UNKNOWN": "UNKNOWN"
+    },
+    "sentiment_map": {
+      "POSITIVE": "HAPPY",
+      "NEUTRAL": "NEUTRAL",
+      "NEGATIVE": "SAD"
+    },
     "segment_mode": "vad",
     "segment_max_seconds": 15.0,
     "segment_min_seconds": 1.0,

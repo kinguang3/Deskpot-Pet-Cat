@@ -83,7 +83,10 @@ class VoiceManager(QObject):
         from src.voice.emotion_parser import EmotionParser
 
         self._parser = EmotionParser(
-            min_confidence=self._config.get("voice.min_confidence", 0.5)
+            min_confidence=self._config.get("voice.min_confidence", 0.5),
+            # 情绪映射可从配置覆盖，缺省时使用内置默认映射
+            emotion_map=self._config.get("voice.emotion_map"),
+            sentiment_map=self._config.get("voice.sentiment_map"),
         )
 
         # 情感分析场景：分段参数默认放宽
