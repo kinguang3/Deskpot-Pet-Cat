@@ -65,6 +65,8 @@ GBC Nina 的核心目标是提供一个 **有生命感** 的桌面伴侣，而�
 
 - **自定义语音指令** — 用户可自定义语音触发词和对应动作（打开网页 / 打开应用），通过设置面板管理，数据持久化到配置文件。
 
+- **语音情绪识别（Hybrid 双 Provider）** — AssemblyAI 负责高质量转录与英语情绪，SenseVoice 负责中文情绪、语种识别与事件检测，两者并行执行并按语言合并结果，支持单 Provider 降级。详见 [docs/voice.md](docs/voice.md)。
+
 ---
 
 ## 三、依赖项
@@ -179,6 +181,43 @@ Nina 的对话根据以下条件动态选择：
 
 对话间隔 30~60 秒随机，避免频繁打扰。
 
+### 6. 语音情绪识别（Hybrid 双 Provider）
+
+语音模块支持三种 provider：
+
+| provider | 定位 | 能力 |
+| -------- | ---- | ---- |
+| `assemblyai` | 云端 | 高质量转录、英语情绪分析 |
+| `sensevoice` | 本地 GGUF | 中文情绪、语种识别、音频事件检测 |
+| `hybrid` | 组合（推荐） | 两者并行，按语言合并结果 |
+
+`hybrid` 模式下，AssemblyAI 与 SenseVoice 并行处理同一段音频，再按语言合并：
+
+- **文本**优先 AssemblyAI，为空时用 SenseVoice；
+- **语言**优先 SenseVoice，失败时退回 AssemblyAI；
+- **情绪**在语言为 `en` 且 AssemblyAI 情绪有效时用 AssemblyAI，否则用 SenseVoice；
+- 事件 payload 中的 `emotion_source` 标记情绪来源（`assemblyai` / `sensevoice`）。
+
+任一 Provider 失败时自动降级到另一个；`voice.hybrid.allow_partial_provider`
+控制是否允许只就绪一个 Provider 也继续工作。配置示例：
+
+```json
+"voice": {
+  "provider": "hybrid",
+  "sample_rate": 16000,
+  "assemblyai": { "api_key": "<你的 Key>", "language": "en" },
+  "sensevoice": {
+    "exe_path": "bin/llama-funasr-sensevoice.exe",
+    "model_path": "models/sensevoice-small-q8.gguf",
+    "vad_path": "models/fsmn-vad.gguf"
+  },
+  "hybrid": { "allow_partial_provider": true, "max_workers": 2 }
+}
+```
+
+AssemblyAI 的 Key 也可以通过环境变量 `ASSEMBLYAI_API_KEY` 提供。
+完整工作流程、合并规则与全部配置项见 [docs/voice.md](docs/voice.md)。
+
 ---
 
 ## 六、项目结构
@@ -193,6 +232,9 @@ GBC-Nina/
 ├── run.ps1                        # 一键启动（PowerShell）
 ├── requirements.txt               # Python 依赖
 ├── README.md                      # 项目说明文档
+│
+├── docs/                          # 文档目录
+│   └── voice.md                   # 语音情绪识别模块说明
 │
 ├── config/                        # 配置文件目录
 │   └── default.json               # 默认配置
@@ -244,6 +286,18 @@ GBC-Nina/
     │   ├── __init__.py
     │   ├── tray.py                # 系统托盘（猫爪图标）
     │   └── settings.py            # 设置面板
+    │
+    ├── voice/                     # 语音情绪识别
+    │   ├── __init__.py
+    │   ├── audio_capture.py       # 麦克风采集
+    │   ├── audio_segmenter.py     # VAD 音频分段
+    │   ├── emotion_parser.py      # 情绪标签归一化
+    │   ├── voice_manager.py       # 语音模块入口
+    │   └── providers/             # 语音提供方
+    │       ├── base.py                    # 抽象接口
+    │       ├── assemblyai_provider.py     # 云端转录 + 英语情绪
+    │       ├── sensevoice_gguf_provider.py # 本地中文情绪
+    │       └── hybrid_provider.py         # 双 Provider 协同
     │
     └── utils/                     # 工具类
         ├── __init__.py
