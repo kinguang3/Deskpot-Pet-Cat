@@ -188,7 +188,7 @@ class VoiceManager(QObject):
         except Exception:
             logger.exception("Error feeding audio to segmenter")
 
-    def _on_segment(self, audio_bytes: bytes):
+    def _on_segment(self, audio_bytes: bytes, rms: float):
         """收到一段完整音频，异步分析"""
         if not audio_bytes or not self._provider:
             return
@@ -204,15 +204,16 @@ class VoiceManager(QObject):
 
         threading.Thread(
             target=self._analyze,
-            args=(audio_bytes,),
+            args=(audio_bytes, rms),
             daemon=True,
             name="VoiceAnalyze",
         ).start()
 
-    def _analyze(self, audio_bytes: bytes):
+    def _analyze(self, audio_bytes: bytes, rms: float):
         try:
             raw = self._provider.transcribe_and_analyze(audio_bytes)
             parsed = self._parser.parse(raw)
+            parsed["energy"] = rms
             self._publish(parsed)
         except Exception:
             logger.exception("Voice analyze failed")
@@ -231,6 +232,7 @@ class VoiceManager(QObject):
             "emotion": parsed.get("emotion", "UNKNOWN"),
             "sentiment": parsed.get("sentiment", "UNKNOWN"),
             "confidence": parsed.get("confidence", 0.0),
+            "energy": parsed.get("energy", 0.0),
             "language": parsed.get("language", "UNKNOWN"),
             "event": parsed.get("event", "UNKNOWN"),
             "segments": parsed.get("segments", []),
@@ -238,10 +240,11 @@ class VoiceManager(QObject):
 
         self._event_bus.emit("voice.emotion_detected", payload)
         logger.info(
-            "[Voice Emotion] %s (%s, %.2f) lang=%s event=%s | %s",
+            "[Voice Emotion] %s (%s, %.2f) energy=%.1f lang=%s event=%s | %s",
             payload["emotion"],
             payload["sentiment"],
             payload["confidence"],
+            payload["energy"],
             payload["language"],
             payload["event"],
             payload["text"],

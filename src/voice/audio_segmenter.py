@@ -109,12 +109,13 @@ class AudioSegmenter:
         if not self._buffer:
             return
         audio = bytes(self._buffer)
+        rms = self._calc_rms(audio)
         self._buffer.clear()
         self._silence_run_ms = 0.0
         self._has_speech = False
         if self._on_segment:
             try:
-                self._on_segment(audio)
+                self._on_segment(audio, rms)
             except Exception:
                 logger.exception("Error in segment callback")
 
@@ -145,3 +146,15 @@ class AudioSegmenter:
         # 使用 float32 计算 RMS，避免 int16 平方溢出
         rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
         return rms < self._silence_rms_threshold
+
+    def _calc_rms(self, pcm_bytes: bytes) -> float:
+        """计算整段音频的平均 RMS 能量（0.0 ~ 32767.0）"""
+        if not pcm_bytes:
+            return 0.0
+        try:
+            samples = np.frombuffer(pcm_bytes, dtype=np.int16)
+        except Exception:
+            return 0.0
+        if samples.size == 0:
+            return 0.0
+        return float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
