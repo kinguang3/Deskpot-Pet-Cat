@@ -100,6 +100,19 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         else:
             logger.error("SenseVoiceGGUFProvider not ready, check paths")
 
+        configured = self._config.get_path("voice.sensevoice.temp_path")
+        self._temp_dir = (
+            Path(configured) if configured else Path(tempfile.gettempdir())
+        )
+        try:
+            self._temp_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.exception(
+                "Failed to create temp dir, fallback to system temp"
+            )
+            self._temp_dir = Path(tempfile.gettempdir())
+            self._temp_dir.mkdir(parents=True, exist_ok=True)
+
     # BaseVoiceProvider 接口
 
     def is_ready(self) -> bool:
@@ -169,9 +182,8 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
 
     def _pcm_to_wav(self, pcm_bytes: bytes) -> str:
         """把 PCM 字节写成临时 WAV 文件，返回文件路径"""
-        temp_dir = Path(self._config.get_path("voice.sensevoice.temp_path"))
         fd, wav_path = tempfile.mkstemp(
-            suffix=".wav", prefix="sv_", dir=temp_dir
+            suffix=".wav", prefix="sv_", dir=str(self._temp_dir)
         )
         try:
             with os.fdopen(fd, "wb") as f:
