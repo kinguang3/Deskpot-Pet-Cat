@@ -7,13 +7,15 @@
 AudioCapture -> AudioSegmenter -> Provider -> EmotionParser -> EventBus
 
 适配点：
-- 新增 sensevoice provider 分支，通过 SenseVoiceGGUFProvider 调用
-  本地的 llama-funasr-sensevoice.exe
+- 支持 assemblyai / sensevoice / hybrid 三种 provider；hybrid 同时启用
+  云端与本地 Provider，由 HybridVoiceProvider 按语言合并结果
 - 默认分段参数向情感分析场景调优（max_seconds 从 5s 放宽到 15s）
 - pause 时重置 segmenter，避免恢复后残留音频与新音频拼接
-- 限制并发分析线程数，避免 segment 产生速度超过推理速度时线程堆积
+- 使用 ThreadPoolExecutor 管理分析任务，配合 BoundedSemaphore 限制并发，
+  避免 segment 产生速度超过推理速度时任务无限堆积
 """
 
+import concurrent.futures
 import threading
 
 from PySide6.QtCore import QObject, Signal
@@ -42,9 +44,13 @@ class VoiceManager(QObject):
         self._segmenter = None
         self._provider = None
         self._parser = None
+        self._executor = None
+        self._analyze_semaphore = None
 
         self._running = False
-        self._analyzing = 0
+        self._provider_name = "assemblyai"
+        self._sample_rate = 16000
+        self._channels = 1
         self._lock = threading.Lock()
 
         logger.debug("VoiceManager initialized")
@@ -60,32 +66,33 @@ class VoiceManager(QObject):
             return False
 
         provider_name = self._config.get("voice.provider", "assemblyai")
-        if not self._build_provider(provider_name):
+        sample_rate = self._config.get("voice.sample_rate", 16000)
+        channels = self._config.get("voice.channels", 1)
+
+        self._provider_name = provider_name
+        self._sample_rate = sample_rate
+        self._channels = channels
+
+        if not self._build_provider(provider_name, sample_rate, channels):
             return False
 
         from src.voice.audio_capture import AudioCapture
-        from src.voice.audio_segmenter import AudioSegmenter
         from src.voice.emotion_parser import EmotionParser
-
-        sample_rate = self._config.get("voice.sample_rate", 16000)
-        channels = self._config.get("voice.channels", 1)
 
         self._parser = EmotionParser(
             min_confidence=self._config.get("voice.min_confidence", 0.5)
         )
 
         # 情感分析场景：分段参数默认放宽
-        self._segmenter = AudioSegmenter(
-            mode=self._config.get("voice.segment_mode", "vad"),
-            sample_rate=sample_rate,
-            channels=channels,
-            max_seconds=self._config.get("voice.segment_max_seconds", 15.0),
-            min_seconds=self._config.get("voice.segment_min_seconds", 1.0),
-            silence_ms=self._config.get("voice.segment_silence_ms", 700),
-            silence_rms_threshold=self._config.get(
-                "voice.segment_silence_rms_threshold", 400
-            ),
-            on_segment=self._on_segment,
+        self._create_segmenter(sample_rate, channels)
+
+        # 线程池负责执行分析任务，信号量限制排队数量
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.MAX_CONCURRENT_ANALYZE,
+            thread_name_prefix="VoiceAnalyze",
+        )
+        self._analyze_semaphore = threading.BoundedSemaphore(
+            self.MAX_CONCURRENT_ANALYZE
         )
 
         self._capture = AudioCapture(
@@ -95,16 +102,20 @@ class VoiceManager(QObject):
         self._capture.set_callback(self._on_audio)
 
         if not self._capture.start():
-            self._cleanup()
+            self._cleanup(close_provider=True, shutdown_executor=True)
             return False
 
         self._running = True
         self.state_changed.emit(True)
-        logger.info("VoiceManager started (provider=%s)", provider_name)
+        logger.info(
+            "VoiceManager started (provider=%s, %dHz)",
+            provider_name,
+            sample_rate,
+        )
         return True
 
     def stop(self):
-        if not self._running:
+        if not self._running and self._executor is None:
             return
 
         self._running = False
@@ -113,7 +124,14 @@ class VoiceManager(QObject):
         if self._segmenter:
             self._segmenter.flush()
 
-        self._cleanup()
+        executor = self._executor
+        self._executor = None
+        if executor is not None:
+            # 等待正在执行的任务结束，并取消尚未开始的任务
+            executor.shutdown(wait=True, cancel_futures=True)
+
+        self._analyze_semaphore = None
+        self._cleanup(close_provider=True)
         self.state_changed.emit(False)
         logger.info("VoiceManager stopped")
 
@@ -135,25 +153,95 @@ class VoiceManager(QObject):
 
     # 内部
 
-    def _build_provider(self, name: str) -> bool:
+    def _create_segmenter(self, sample_rate: int, channels: int):
+        """按给定采样率创建分段器（采样率变化时用于重建）"""
+        from src.voice.audio_segmenter import AudioSegmenter
+
+        self._segmenter = AudioSegmenter(
+            mode=self._config.get("voice.segment_mode", "vad"),
+            sample_rate=sample_rate,
+            channels=channels,
+            max_seconds=self._config.get("voice.segment_max_seconds", 15.0),
+            min_seconds=self._config.get("voice.segment_min_seconds", 1.0),
+            silence_ms=self._config.get("voice.segment_silence_ms", 700),
+            silence_rms_threshold=self._config.get(
+                "voice.segment_silence_rms_threshold", 400
+            ),
+            on_segment=self._on_segment,
+        )
+
+    def _create_assemblyai(self, sample_rate: int, channels: int):
+        """按配置创建 AssemblyAI Provider"""
+        from src.voice.providers.assemblyai_provider import (
+            AssemblyAIProvider,
+        )
+
+        return AssemblyAIProvider(
+            api_key=(
+                self._config.get("voice.assemblyai.api_key")
+                or self._config.get("voice.api_key", "")
+            ),
+            language=(
+                self._config.get("voice.assemblyai.language")
+                or self._config.get("voice.language", "en")
+            ),
+            sample_rate=sample_rate,
+            channels=channels,
+            timeout=self._config.get("voice.assemblyai.timeout", 60),
+        )
+
+    def _create_sensevoice(self, sample_rate: int, channels: int):
+        """按配置创建 SenseVoice Provider"""
+        from src.voice.providers.sensevoice_gguf_provider import (
+            SenseVoiceGGUFProvider,
+        )
+
+        return SenseVoiceGGUFProvider(
+            exe_path=self._config.get_path("voice.sensevoice.exe_path"),
+            model_path=self._config.get_path(
+                "voice.sensevoice.model_path"
+            ),
+            vad_path=self._config.get_path("voice.sensevoice.vad_path"),
+            sample_rate=sample_rate,
+            channels=channels,
+            timeout=self._config.get("voice.sensevoice.timeout", 30.0),
+            n_threads=self._config.get("voice.sensevoice.n_threads", 8),
+        )
+
+    def _build_provider(
+        self, name: str, sample_rate: int = 16000, channels: int = 1
+    ) -> bool:
         if self._provider is not None:
             return True
 
-        if name == "sensevoice":
-            from src.voice.providers.sensevoice_gguf_provider import (
-                SenseVoiceGGUFProvider,
+        if name == "hybrid":
+            from src.voice.providers.hybrid_provider import (
+                HybridVoiceProvider,
             )
 
-            provider = SenseVoiceGGUFProvider(
-                exe_path=self._config.get_path("voice.sensevoice.exe_path"),
-                model_path=self._config.get_path(
-                    "voice.sensevoice.model_path"
+            assemblyai = self._create_assemblyai(sample_rate, channels)
+            sensevoice = self._create_sensevoice(sample_rate, channels)
+            provider = HybridVoiceProvider(
+                assemblyai_provider=assemblyai,
+                sensevoice_provider=sensevoice,
+                allow_partial=self._config.get(
+                    "voice.hybrid.allow_partial_provider", False
                 ),
-                vad_path=self._config.get_path("voice.sensevoice.vad_path"),
-                sample_rate=self._config.get("voice.sample_rate", 16000),
-                channels=self._config.get("voice.channels", 1),
-                timeout=self._config.get("voice.sensevoice.timeout", 30.0),
+                max_workers=self._config.get("voice.hybrid.max_workers", 2),
             )
+            if not provider.is_ready():
+                logger.error(
+                    "Hybrid provider not ready "
+                    "(assemblyai_ready=%s, sensevoice_ready=%s)",
+                    assemblyai.is_ready(),
+                    sensevoice.is_ready(),
+                )
+                return False
+            self._provider = provider
+            return True
+
+        if name == "sensevoice":
+            provider = self._create_sensevoice(sample_rate, channels)
             if not provider.is_ready():
                 logger.error("SenseVoice provider not ready")
                 return False
@@ -161,16 +249,7 @@ class VoiceManager(QObject):
             return True
 
         if name == "assemblyai":
-            from src.voice.providers.assemblyai_provider import (
-                AssemblyAIProvider,
-            )
-
-            provider = AssemblyAIProvider(
-                api_key=self._config.get("voice.api_key", ""),
-                language=self._config.get("voice.language", "en"),
-                sample_rate=self._config.get("voice.sample_rate", 16000),
-                channels=self._config.get("voice.channels", 1),
-            )
+            provider = self._create_assemblyai(sample_rate, channels)
             if not provider.is_ready():
                 logger.error("AssemblyAI provider not ready")
                 return False
@@ -189,25 +268,30 @@ class VoiceManager(QObject):
             logger.exception("Error feeding audio to segmenter")
 
     def _on_segment(self, audio_bytes: bytes, rms: float):
-        """收到一段完整音频，异步分析"""
+        """收到一段完整音频，提交到线程池异步分析"""
         if not audio_bytes or not self._provider:
             return
 
-        with self._lock:
-            if self._analyzing >= self.MAX_CONCURRENT_ANALYZE:
-                logger.warning(
-                    "Analyze queue full (%d), dropping segment",
-                    self._analyzing,
-                )
-                return
-            self._analyzing += 1
+        executor = self._executor
+        semaphore = self._analyze_semaphore
+        if executor is None or semaphore is None:
+            return
 
-        threading.Thread(
-            target=self._analyze,
-            args=(audio_bytes, rms),
-            daemon=True,
-            name="VoiceAnalyze",
-        ).start()
+        if not semaphore.acquire(blocking=False):
+            logger.warning(
+                "Analyze queue full (%d), dropping segment",
+                self.MAX_CONCURRENT_ANALYZE,
+            )
+            return
+
+        try:
+            future = executor.submit(self._analyze, audio_bytes, rms)
+        except RuntimeError:
+            # 线程池已关闭（停止过程中）
+            semaphore.release()
+            logger.warning("Analyze executor already stopped, drop segment")
+            return
+        future.add_done_callback(lambda _future: semaphore.release())
 
     def _analyze(self, audio_bytes: bytes, rms: float):
         try:
@@ -217,9 +301,6 @@ class VoiceManager(QObject):
             self._publish(parsed)
         except Exception:
             logger.exception("Voice analyze failed")
-        finally:
-            with self._lock:
-                self._analyzing -= 1
 
     def _publish(self, parsed: dict):
         if not parsed.get("text"):
@@ -228,6 +309,7 @@ class VoiceManager(QObject):
         payload = {
             "source": "voice",
             "provider": self._provider.name if self._provider else "unknown",
+            "emotion_source": parsed.get("emotion_source", "unknown"),
             "text": parsed.get("text", ""),
             "emotion": parsed.get("emotion", "UNKNOWN"),
             "sentiment": parsed.get("sentiment", "UNKNOWN"),
@@ -240,26 +322,39 @@ class VoiceManager(QObject):
 
         self._event_bus.emit("voice.emotion_detected", payload)
         logger.info(
-            "[Voice Emotion] %s (%s, %.2f) energy=%.1f lang=%s event=%s | %s",
+            "[Voice Emotion] %s (%s, %.2f) energy=%.1f lang=%s "
+            "event=%s source=%s | %s",
             payload["emotion"],
             payload["sentiment"],
             payload["confidence"],
             payload["energy"],
             payload["language"],
             payload["event"],
+            payload["emotion_source"],
             payload["text"],
         )
 
-    def _cleanup(self):
+    def _cleanup(
+        self, close_provider: bool = False, shutdown_executor: bool = False
+    ):
+        if shutdown_executor and self._executor is not None:
+            self._executor.shutdown(wait=True, cancel_futures=True)
+            self._executor = None
+        if close_provider and self._provider is not None:
+            try:
+                self._provider.close()
+            except Exception:
+                logger.exception("Failed to close voice provider")
+            self._provider = None
         self._capture = None
         self._segmenter = None
 
     def get_debug_info(self) -> dict:
         return {
             "running": self._running,
-            "analyzing": self._analyzing,
             "provider": self._provider.name if self._provider else None,
             "provider_ready": (
                 self._provider.is_ready() if self._provider else False
             ),
+            "max_concurrent_analyze": self.MAX_CONCURRENT_ANALYZE,
         }

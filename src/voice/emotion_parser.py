@@ -103,6 +103,9 @@ class EmotionParser:
             "confidence": confidence,
             "language": provider_result.get("language", "UNKNOWN"),
             "event": provider_result.get("event", "UNKNOWN"),
+            "emotion_source": provider_result.get(
+                "emotion_source", "unknown"
+            ),
             "segments": segments,
         }
 
@@ -122,5 +125,6 @@ class EmotionParser:
             "confidence": 0.0,
             "language": "UNKNOWN",
             "event": "UNKNOWN",
+            "emotion_source": "unknown",
             "segments": [],
         }
