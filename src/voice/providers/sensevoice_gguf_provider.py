@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import wave
 from pathlib import Path
 
@@ -67,6 +68,7 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         sample_width: int = 2,
         timeout: float = 30.0,
         n_threads: int = 8,
+        thread_flag: str = None,
     ):
         """
         Args:
@@ -78,6 +80,8 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             sample_width: 每个采样点字节数，int16 为 2
             timeout: 单次推理超时秒数
             n_threads: CPU 推理线程数
+            thread_flag: 线程数命令行参数；None 表示自动探测，
+                空字符串表示不透传（二进制不支持时使用）
         """
         self._exe_path = Path(exe_path) if exe_path else None
         self._model_path = Path(model_path) if model_path else None
@@ -88,6 +92,9 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         self._sample_width = sample_width
         self._timeout = timeout
         self._n_threads = n_threads
+        self._thread_flag = thread_flag
+        self._resolved_thread_flag = None
+        self._thread_flag_lock = threading.Lock()
 
         self._config = ConfigManager()
 
@@ -137,13 +144,16 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         wav_path = None
         try:
             wav_path = self._pcm_to_wav(audio_bytes)
-            raw_output = self._run_inference(wav_path)
+            raw_output, stderr = self._run_inference(wav_path)
             parsed = self._parse_output(raw_output)
 
+            # stderr 一并带回，便于排查二进制运行问题
             parsed["raw"] = {
                 "stdout": raw_output,
-                "stderr": "",  # 推理成功时 stderr 通常为空
+                "stderr": stderr,
             }
+            if stderr:
+                logger.debug("SenseVoice stderr: %s", stderr)
             return parsed
 
         except subprocess.TimeoutExpired:
@@ -155,11 +165,7 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             logger.exception("SenseVoice inference failed")
             return self._empty_result()
         finally:
-            if wav_path and os.path.exists(wav_path):
-                try:
-                    os.unlink(wav_path)
-                except OSError:
-                    logger.warning("Failed to remove temp wav: %s", wav_path)
+            self._remove_temp_wav(wav_path)
 
     def close(self) -> None:
         """无需释放的持久资源，保持接口兼容"""
@@ -199,8 +205,8 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             raise
         return wav_path
 
-    def _run_inference(self, wav_path: str) -> str:
-        """调用二进制程序，返回 stdout 文本"""
+    def _run_inference(self, wav_path: str):
+        """调用二进制程序，返回 (stdout 文本, stderr 文本)"""
         cmd = [
             str(self._exe_path),
             "-m",
@@ -211,6 +217,11 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             wav_path,
             "--keep-tags",  # 保留语言/情绪/事件标签
         ]
+
+        # 按二进制实际支持的参数透传线程数
+        thread_flag = self._resolve_thread_flag()
+        if thread_flag:
+            cmd.extend([thread_flag, str(self._n_threads)])
 
         logger.debug("Running SenseVoice: %s", " ".join(cmd))
 
@@ -224,15 +235,73 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             check=False,  # 非零退出码也先拿输出，由解析层判断
         )
 
+        stderr = (result.stderr or "").strip()
+
         if result.returncode != 0:
             logger.error(
                 "SenseVoice exited with code %d: %s",
                 result.returncode,
-                result.stderr.strip(),
+                stderr,
+            )
+            return "", stderr
+
+        return (result.stdout or "").strip(), stderr
+
+    def _resolve_thread_flag(self) -> str:
+        """返回可用的线程数参数，无则返回空字符串"""
+        with self._thread_flag_lock:
+            if self._resolved_thread_flag is not None:
+                return self._resolved_thread_flag
+            if self._thread_flag is not None:
+                self._resolved_thread_flag = self._thread_flag
+            else:
+                self._resolved_thread_flag = self._detect_thread_flag()
+            return self._resolved_thread_flag
+
+    def _detect_thread_flag(self) -> str:
+        """通过 --help 探测二进制支持的线程数参数名
+
+        llama-funasr-sensevoice 不同版本参数名不同（-t / --threads），
+        探测失败时直接不透传，保证推理仍可正常执行。
+        """
+        if not self._exe_path or not self._exe_path.is_file():
+            return ""
+        try:
+            result = subprocess.run(
+                [str(self._exe_path), "--help"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=5.0,
+                check=False,
+            )
+        except Exception:
+            logger.debug(
+                "SenseVoice thread flag probing failed", exc_info=True
             )
             return ""
 
-        return result.stdout.strip()
+        help_text = (result.stdout or "") + (result.stderr or "")
+        for flag in ("--threads", "-t"):
+            pattern = r"(?<![\w-])" + re.escape(flag) + r"(?![\w-])"
+            if re.search(pattern, help_text):
+                logger.info("SenseVoice binary supports thread flag: %s", flag)
+                return flag
+
+        logger.info(
+            "SenseVoice binary declares no thread flag, skip n_threads"
+        )
+        return ""
+
+    def _remove_temp_wav(self, wav_path):
+        """删除临时 WAV，忽略文件不存在等错误"""
+        if not wav_path:
+            return
+        try:
+            Path(wav_path).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Failed to remove temp wav: %s", wav_path)
 
     def _parse_output(self, raw_text: str) -> dict:
         """解析富文本输出，提取语言、情绪、事件、规范化与纯文本"""
