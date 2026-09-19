@@ -157,6 +157,8 @@ class AssemblyAIProvider(BaseVoiceProvider):
             "text": transcript.text or "",
             "sentiment": overall_sentiment,
             "confidence": overall_conf,
+            # 透传配置语种，供 HybridVoiceProvider 合并时兜底
+            "language": self._language,
             "segments": segments,
             "raw": {"id": getattr(transcript, "id", None)},
         }

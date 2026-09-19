@@ -4,5 +4,6 @@
 """语音服务提供方。"""
 
 from src.voice.providers.base import BaseVoiceProvider
+from src.voice.providers.hybrid_provider import HybridVoiceProvider
 
-__all__ = ["BaseVoiceProvider"]
+__all__ = ["BaseVoiceProvider", "HybridVoiceProvider"]
