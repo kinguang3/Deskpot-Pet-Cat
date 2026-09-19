@@ -193,15 +193,21 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         )
         try:
             with os.fdopen(fd, "wb") as f:
+                # 句柄已交给 fdopen 管理
+                fd = -1
                 with wave.open(f, "wb") as wf:
                     wf.setnchannels(self._channels)
                     wf.setsampwidth(self._sample_width)
                     wf.setframerate(self._sample_rate)
                     wf.writeframes(pcm_bytes)
         except Exception:
-            # 写失败也要清理临时文件
-            if os.path.exists(wav_path):
-                os.unlink(wav_path)
+            # 写失败也要关闭句柄并清理临时文件
+            if fd != -1:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            self._remove_temp_wav(wav_path)
             raise
         return wav_path
 

@@ -106,26 +106,42 @@ class AssemblyAIProvider(BaseVoiceProvider):
             logger.exception("AssemblyAI request failed")
             return empty
         finally:
-            try:
-                Path(tmp_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            self._remove_temp_file(tmp_path)
 
     def _write_wav(self, audio_bytes: bytes) -> str:
-        """把 PCM bytes 写成临时 WAV 文件"""
+        """把 PCM bytes 写成临时 WAV 文件，失败时清理残留文件"""
+        tmp_path = None
+        success = False
         try:
             tmp = tempfile.NamedTemporaryFile(
                 suffix=".wav", delete=False, prefix="voice_"
             )
-            with wave.open(tmp.name, "wb") as wf:
+            tmp_path = tmp.name
+            # 先关闭 mkstemp 句柄，避免 Windows 上重复打开失败
+            tmp.close()
+            with wave.open(tmp_path, "wb") as wf:
                 wf.setnchannels(self._channels)
                 wf.setsampwidth(2)  # 16bit
                 wf.setframerate(self._sample_rate)
                 wf.writeframes(audio_bytes)
-            return tmp.name
+            success = True
+            return tmp_path
         except Exception:
             logger.exception("Failed to write temp wav")
             return None
+        finally:
+            if not success:
+                self._remove_temp_file(tmp_path)
+
+    @staticmethod
+    def _remove_temp_file(tmp_path):
+        """删除临时文件，忽略文件不存在等错误"""
+        if not tmp_path:
+            return
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Failed to remove temp file: %s", tmp_path)
 
     def _normalize(self, transcript) -> dict:
         """把 AssemblyAI 的返回整理成统一结构"""
