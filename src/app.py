@@ -164,6 +164,7 @@ class App(QObject):
         self._event_bus.on("command.show_dialogue", self._on_command_show_dialogue)
         self._event_bus.on("command.play_animation", self._on_command_play_animation)
         self._event_bus.on("command.show_status", self._on_command_show_status)
+        self._event_bus.on("command.open_website", self._on_command_open_website)
 
     def start(self):
         """启动应用。"""
@@ -437,6 +438,21 @@ class App(QObject):
                 f"好奇: {emotion_info['curiosity']:.0f}"
             )
             self._show_dialogue(status_text)
+
+    def _on_command_open_website(self, data: dict):
+        """打开网站。"""
+        url = data.get("url", "")
+        if url:
+            import webbrowser
+            try:
+                webbrowser.open(url)
+                logger.info("Opened website: %s", url)
+                if self._config.get("behavior.dialogue_enabled", True):
+                    self._show_dialogue(f"正在打开 {url}")
+            except Exception as e:
+                logger.exception("Failed to open website: %s", url)
+                if self._config.get("behavior.dialogue_enabled", True):
+                    self._show_dialogue("打开网站失败")
 
     def eventFilter(self, watched, event):
         """事件过滤器"""

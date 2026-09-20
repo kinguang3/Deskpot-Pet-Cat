@@ -94,8 +94,6 @@ class CommandManager:
 
         return None
 
-    # ─── 动作执行 ───
-
     def execute_action(self, action: str, context: dict = None) -> bool:
         """执行指定动作。"""
         handler = self._action_handlers.get(action)
@@ -155,6 +153,18 @@ class CommandManager:
         """显示状态信息。"""
         self._event_bus.emit("command.show_status", {})
 
+    def handle_open_website(self, context: dict):
+        """打开网站。"""
+        url = context.get("url", "")
+        if url:
+            # 确保 URL 有协议前缀
+            if not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            self._event_bus.emit("command.open_website", {"url": url})
+            logger.info("Opening website: %s", url)
+        else:
+            logger.warning("No URL provided for open_website action")
+
     def register_builtin_actions(self):
         """注册所有内置动作处理器。"""
         self.register_action("show_time", self.handle_show_time)
@@ -163,6 +173,7 @@ class CommandManager:
         self.register_action("play_happy", self.handle_play_happy)
         self.register_action("play_dance", self.handle_play_dance)
         self.register_action("show_status", self.handle_show_status)
+        self.register_action("open_website", self.handle_open_website)
 
     # ─── 配置管理 ───
 
@@ -241,8 +252,16 @@ class CommandManager:
             if text_after_wake:
                 cmd = self.match_command(text_after_wake)
                 if cmd:
-                    self.execute_action(cmd.get("action", ""), {"text": text_after_wake})
-                    return cmd.get("action")
+                    action = cmd.get("action", "")
+                    context = {"text": text_after_wake}
+                    # 如果是 open_website，传递 URL
+                    if action == "open_website":
+                        context["url"] = cmd.get("custom_url", "")
+                    # 如果是 show_dialogue，传递自定义文本
+                    elif action == "show_dialogue":
+                        context["text"] = cmd.get("custom_text", text_after_wake)
+                    self.execute_action(action, context)
+                    return action
             return "wake_detected"
 
         # 如果在聆听模式，检查指令
@@ -253,9 +272,17 @@ class CommandManager:
 
             cmd = self.match_command(text)
             if cmd:
-                self.execute_action(cmd.get("action", ""), {"text": text})
+                action = cmd.get("action", "")
+                context = {"text": text}
+                # 如果是 open_website，传递 URL
+                if action == "open_website":
+                    context["url"] = cmd.get("custom_url", "")
+                # 如果是 show_dialogue，传递自定义文本
+                elif action == "show_dialogue":
+                    context["text"] = cmd.get("custom_text", text)
+                self.execute_action(action, context)
                 self.set_listening(False)
-                return cmd.get("action")
+                return action
 
         return None
 

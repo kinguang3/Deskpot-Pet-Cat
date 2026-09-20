@@ -210,6 +210,7 @@ class SettingsPanel(QWidget):
             ("play_dance", "播放跳舞动画"),
             ("show_status", "显示状态"),
             ("show_dialogue", "显示自定义对话"),
+            ("open_website", "打开网站"),
         ]
 
         action, ok = QInputDialog.getItem(
@@ -229,15 +230,27 @@ class SettingsPanel(QWidget):
             if not ok:
                 return
 
+        # 如果是 open_website，获取网址
+        custom_url = ""
+        if action_key == "open_website":
+            custom_url, ok = QInputDialog.getText(
+                self, "打开网站", "网址:", QLineEdit.EchoMode.Normal,
+                placeholderText="example.com"
+            )
+            if not ok or not custom_url:
+                return
+
         # 添加到配置
         commands = self._current.get("voice.commands.custom", [])
         cmd = {
             "trigger": trigger,
             "action": action_key,
-            "description": custom_text or action.split(" - ")[1],
+            "description": custom_text or custom_url or action.split(" - ")[1],
         }
         if custom_text:
             cmd["custom_text"] = custom_text
+        if custom_url:
+            cmd["custom_url"] = custom_url
         commands.append(cmd)
         self._current["voice.commands.custom"] = commands
 
@@ -295,7 +308,14 @@ class SettingsPanel(QWidget):
         for cmd in commands:
             trigger = cmd.get("trigger", "")
             action = cmd.get("action", "")
-            self._commands_list.addItem(f"{trigger} -> {action}")
+            if action == "open_website":
+                url = cmd.get("custom_url", "")
+                self._commands_list.addItem(f"{trigger} -> 打开 {url}")
+            elif action == "show_dialogue":
+                text = cmd.get("custom_text", "")
+                self._commands_list.addItem(f"{trigger} -> 说 '{text}'")
+            else:
+                self._commands_list.addItem(f"{trigger} -> {action}")
 
     def _apply_preview(self, key, value):
         """更新临时配置，发出预览信号，"""
