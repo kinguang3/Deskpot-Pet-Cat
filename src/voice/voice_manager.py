@@ -50,6 +50,11 @@ class VoiceManager(QObject):
         self._executor = None
         self._analyze_semaphore = None
 
+        # 指令管理器
+        from src.voice.commands import CommandManager
+        self._command_manager = CommandManager()
+        self._command_manager.register_builtin_actions()
+
         self._running = False
         self._provider_name = "assemblyai"
         self._sample_rate = 16000
@@ -378,24 +383,56 @@ class VoiceManager(QObject):
         if not parsed.get("text"):
             return
 
+        text = parsed.get("text", "")
+        emotion = parsed.get("emotion", "UNKNOWN")
+        sentiment = parsed.get("sentiment", "UNKNOWN")
+        confidence = parsed.get("confidence", 0.0)
+        energy = parsed.get("energy", 0.0)
+        language = parsed.get("language", "UNKNOWN")
+        event = parsed.get("event", "UNKNOWN")
+        segments = parsed.get("segments", [])
+
+        # 检查指令
+        action = self._command_manager.process_text(text)
+        if action:
+            # 指令已处理，发射指令事件
+            self._event_bus.emit("voice.command_detected", {
+                "source": "voice",
+                "text": text,
+                "action": action,
+                "emotion": emotion,
+                "sentiment": sentiment,
+                "confidence": confidence,
+                "energy": energy,
+                "language": language,
+            })
+            logger.info(
+                "[Voice Command] action=%s | %s",
+                action,
+                text,
+            )
+            return
+
+        # 正常情绪检测
         payload = {
             "source": "voice",
             "provider": self._provider.name if self._provider else "unknown",
             "emotion_source": parsed.get("emotion_source", "unknown"),
-            "text": parsed.get("text", ""),
-            "emotion": parsed.get("emotion", "UNKNOWN"),
-            "sentiment": parsed.get("sentiment", "UNKNOWN"),
-            "confidence": parsed.get("confidence", 0.0),
-            "energy": parsed.get("energy", 0.0),
-            "language": parsed.get("language", "UNKNOWN"),
-            "event": parsed.get("event", "UNKNOWN"),
-            "segments": parsed.get("segments", []),
+            "text": text,
+            "emotion": emotion,
+            "sentiment": sentiment,
+            "confidence": confidence,
+            "energy": energy,
+            "language": language,
+            "event": event,
+            "segments": segments,
+            "is_listening": self._command_manager.is_listening(),
         }
 
         self._event_bus.emit("voice.emotion_detected", payload)
         logger.info(
             "[Voice Emotion] %s (%s, %.2f) energy=%.1f lang=%s "
-            "event=%s source=%s | %s",
+            "event=%s source=%s listening=%s | %s",
             payload["emotion"],
             payload["sentiment"],
             payload["confidence"],
@@ -403,6 +440,7 @@ class VoiceManager(QObject):
             payload["language"],
             payload["event"],
             payload["emotion_source"],
+            payload["is_listening"],
             payload["text"],
         )
 
@@ -429,4 +467,9 @@ class VoiceManager(QObject):
                 self._provider.is_ready() if self._provider else False
             ),
             "max_concurrent_analyze": self.MAX_CONCURRENT_ANALYZE,
+            "command_manager": self._command_manager.get_debug_info(),
         }
+
+    def get_command_manager(self):
+        """获取指令管理器。"""
+        return self._command_manager

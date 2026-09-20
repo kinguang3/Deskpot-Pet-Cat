@@ -159,6 +159,12 @@ class App(QObject):
         # 语音情绪事件
         self._event_bus.on("voice.emotion_detected", self._on_voice_emotion)
 
+        # 语音指令事件
+        self._event_bus.on("voice.command_detected", self._on_voice_command)
+        self._event_bus.on("command.show_dialogue", self._on_command_show_dialogue)
+        self._event_bus.on("command.play_animation", self._on_command_play_animation)
+        self._event_bus.on("command.show_status", self._on_command_show_status)
+
     def start(self):
         """启动应用。"""
         logger.info("Application starting...")
@@ -378,9 +384,16 @@ class App(QObject):
         sentiment = data.get("sentiment", "NEUTRAL")
         energy = data.get("energy", 0.0)
         text = data.get("text", "")
+        is_listening = data.get("is_listening", False)
 
         # 影响内部情感系统（长期）
         self._emotion_system.on_voice_emotion(emotion, sentiment, energy)
+
+        # 如果在聆听模式，显示聆听状态
+        if is_listening:
+            if self._config.get("behavior.dialogue_enabled", True):
+                self._show_dialogue("我在听...")
+            return
 
         # 显示反应台词（短期）
         if self._config.get("behavior.dialogue_enabled", True):
@@ -393,6 +406,37 @@ class App(QObject):
             energy,
             reaction if self._config.get("behavior.dialogue_enabled", True) else "no dialogue",
         )
+
+    def _on_voice_command(self, data: dict):
+        """处理语音指令检测结果。"""
+        action = data.get("action", "")
+        text = data.get("text", "")
+
+        logger.info("Voice command detected: action=%s, text=%s", action, text)
+
+    def _on_command_show_dialogue(self, data: dict):
+        """显示指令对话。"""
+        text = data.get("text", "")
+        if text and self._config.get("behavior.dialogue_enabled", True):
+            self._show_dialogue(text)
+
+    def _on_command_play_animation(self, data: dict):
+        """播放指令动画。"""
+        animation = data.get("animation", "")
+        if animation:
+            self._anim_manager.play(animation)
+
+    def _on_command_show_status(self, data: dict):
+        """显示状态信息。"""
+        if self._config.get("behavior.dialogue_enabled", True):
+            # 获取情感状态
+            emotion_info = self._emotion_system.get_debug_info()
+            status_text = (
+                f"精力: {emotion_info['energy']:.0f} "
+                f"快乐: {emotion_info['happiness']:.0f} "
+                f"好奇: {emotion_info['curiosity']:.0f}"
+            )
+            self._show_dialogue(status_text)
 
     def eventFilter(self, watched, event):
         """事件过滤器"""

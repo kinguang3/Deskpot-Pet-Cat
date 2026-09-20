@@ -76,6 +76,43 @@
     "hybrid": {
       "allow_partial_provider": true,
       "max_workers": 2
+    },
+    "commands": {
+      "enabled": true,
+      "wake_words": ["hey nina", "小猫", "nina"],
+      "wake_timeout_ms": 5000,
+      "custom": [
+        {
+          "trigger": "几点了",
+          "action": "show_time",
+          "description": "显示当前时间"
+        },
+        {
+          "trigger": "今天几号",
+          "action": "show_date",
+          "description": "显示当前日期"
+        },
+        {
+          "trigger": "早上好",
+          "action": "show_greeting",
+          "description": "显示问候语"
+        },
+        {
+          "trigger": "开心",
+          "action": "play_happy",
+          "description": "播放开心动画"
+        },
+        {
+          "trigger": "跳舞",
+          "action": "play_dance",
+          "description": "播放跳舞动画"
+        },
+        {
+          "trigger": "状态",
+          "action": "show_status",
+          "description": "显示状态信息"
+        }
+      ]
     }
   }
 }
