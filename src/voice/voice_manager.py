@@ -275,14 +275,10 @@ class VoiceManager(QObject):
             model_path=self._config.get_path(
                 "voice.sensevoice.model_path"
             ),
-            vad_path=self._config.get_path("voice.sensevoice.vad_path"),
             sample_rate=sample_rate,
             channels=channels,
             timeout=self._config.get("voice.sensevoice.timeout", 30.0),
             n_threads=self._config.get("voice.sensevoice.n_threads", 8),
-            thread_flag=self._config.get(
-                "voice.sensevoice.thread_flag"
-            ),
         )
 
     def _build_provider(

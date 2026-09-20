@@ -101,10 +101,10 @@ Provider 依赖 16kHz 输入，`VoiceManager.start()` 会在采集启动后校�
     "timeout": 60
   },
   "sensevoice": {
-    "exe_path": "bin/llama-funasr-sensevoice.exe",
+    "exe_path": "bin/sense-voice-main.exe",
     "model_path": "models/sensevoice-small-q8.gguf",
-    "vad_path": "models/fsmn-vad.gguf",
     "temp_path": "temp",
+    "language": "zh",
     "timeout": 30.0,
     "n_threads": 8
   },
@@ -122,8 +122,8 @@ Provider 依赖 16kHz 输入，`VoiceManager.start()` 会在采集启动后校�
 | `provider` | `assemblyai` / `sensevoice` / `hybrid` |
 | `assemblyai.api_key` | AssemblyAI API Key，留空时自动降级到 SenseVoice |
 | `assemblyai.language` | AssemblyAI 语种，英语情绪分析需为 `en` |
-| `sensevoice.n_threads` | 本地推理线程数，仅在二进制支持时透传 |
-| `sensevoice.thread_flag` | 线程参数名；缺省自动探测 `--threads` / `-t`，设为空字符串则不传 |
+| `sensevoice.n_threads` | 本地推理线程数，通过 `-t` 透传给二进制 |
+| `sensevoice.language` | 固定语种（`zh` / `en` / `yue` / `ja` / `ko`），`auto` 为自动检测 |
 | `hybrid.allow_partial_provider` | 是否允许单 Provider 降级运行 |
 | `hybrid.max_workers` | Hybrid 并行调用子 Provider 的线程数 |
 
@@ -158,6 +158,8 @@ AssemblyAI 的 Key 也可以通过环境变量 `ASSEMBLYAI_API_KEY` 提供。
 <summary><b>SenseVoice 推理报错</b></summary>
 
 - 事件中的 `raw.sensevoice.stderr` 保留了二进制的标准错误输出；
-- 在 `config/default.json` 中为 `sensevoice.thread_flag` 显式指定参数名，
-  或设为空字符串关闭线程数透传。
+- 确认 `bin/sense-voice-main.exe` 与同目录的 `libdl.dll` 一起分发，
+  缺少该 DLL 时二进制无法启动；
+- 确认 `models/sensevoice-small-q8.gguf` 是 SenseVoice.cpp 转换出的版本，
+  旧版 llama-funasr 模型（元数据键 `sv.vocab`）无法被新二进制加载。
 </details>

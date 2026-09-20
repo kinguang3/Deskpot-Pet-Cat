@@ -207,9 +207,9 @@ Nina 的对话根据以下条件动态选择：
   "sample_rate": 16000,
   "assemblyai": { "api_key": "<你的 Key>", "language": "en" },
   "sensevoice": {
-    "exe_path": "bin/llama-funasr-sensevoice.exe",
+    "exe_path": "bin/sense-voice-main.exe",
     "model_path": "models/sensevoice-small-q8.gguf",
-    "vad_path": "models/fsmn-vad.gguf"
+    "language": "zh"
   },
   "hybrid": { "allow_partial_provider": true, "max_workers": 2 }
 }
