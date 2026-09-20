@@ -67,7 +67,7 @@
     },
     "sensevoice": {
       "exe_path": "bin/sense-voice-main.exe",
-      "model_path": "models/sensevoice-small-q8.gguf",
+      "model_path": "models/sense-voice-small-q8_0.gguf",
       "temp_path": "temp",
       "language": "zh",
       "timeout": 30.0,
