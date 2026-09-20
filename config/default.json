@@ -70,6 +70,7 @@
       "model_path": "models/sensevoice-small-q8.gguf",
       "vad_path": "models/fsmn-vad.gguf",
       "temp_path": "temp",
+      "language": "zh",
       "timeout": 30.0,
       "n_threads": 8
     },

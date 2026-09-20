@@ -97,6 +97,7 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         self._thread_flag_lock = threading.Lock()
 
         self._config = ConfigManager()
+        self._language = self._config.get("voice.sensevoice.language", "zh")
 
         self._ready = self._check_ready()
         if self._ready:
@@ -226,6 +227,8 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             str(self._model_path),
             "--vad",
             str(self._vad_path),
+            "-l",
+            str(self._language),
             "-a",
             wav_path,
             "--keep-tags",  # 保留语言/情绪/事件标签
