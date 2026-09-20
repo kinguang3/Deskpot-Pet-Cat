@@ -15,6 +15,11 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QPushButton,
     QGroupBox,
+    QListWidget,
+    QListWidgetItem,
+    QLineEdit,
+    QComboBox,
+    QInputDialog,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -43,7 +48,7 @@ class SettingsPanel(QWidget):
         self._dirty = False
 
         self.setWindowTitle("GBC Nina - 设置")
-        self.setFixedSize(320, 400)
+        self.setFixedSize(350, 550)
         self.setWindowFlags(
             Qt.WindowType.WindowCloseButtonHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -108,6 +113,43 @@ class SettingsPanel(QWidget):
         behavior_group.setLayout(behavior_layout)
         layout.addWidget(behavior_group)
 
+        # 语音指令设置
+        commands_group = QGroupBox("语音指令")
+        commands_layout = QVBoxLayout()
+
+        # 唤醒词
+        wake_layout = QHBoxLayout()
+        wake_layout.addWidget(QLabel("唤醒词:"))
+        self._wake_words_input = QLineEdit()
+        self._wake_words_input.setPlaceholderText("用逗号分隔，如: hey nina, 小猫")
+        wake_layout.addWidget(self._wake_words_input)
+        commands_layout.addLayout(wake_layout)
+
+        # 指令列表
+        self._commands_list = QListWidget()
+        self._commands_list.setMaximumHeight(120)
+        commands_layout.addWidget(self._commands_list)
+
+        # 指令操作按钮
+        cmd_btn_layout = QHBoxLayout()
+
+        self._add_cmd_btn = QPushButton("添加")
+        self._add_cmd_btn.clicked.connect(self._add_command)
+        cmd_btn_layout.addWidget(self._add_cmd_btn)
+
+        self._edit_cmd_btn = QPushButton("编辑")
+        self._edit_cmd_btn.clicked.connect(self._edit_command)
+        cmd_btn_layout.addWidget(self._edit_cmd_btn)
+
+        self._delete_cmd_btn = QPushButton("删除")
+        self._delete_cmd_btn.clicked.connect(self._delete_command)
+        cmd_btn_layout.addWidget(self._delete_cmd_btn)
+
+        commands_layout.addLayout(cmd_btn_layout)
+
+        commands_group.setLayout(commands_layout)
+        layout.addWidget(commands_group)
+
         # 按钮
         btn_layout = QHBoxLayout()
         self._save_btn = QPushButton("保存")
@@ -151,6 +193,110 @@ class SettingsPanel(QWidget):
     def _on_dialogue_changed(self, state):
         self._apply_preview("behavior.dialogue_enabled", bool(state))
 
+    def _add_command(self):
+        """添加新指令。"""
+        trigger, ok = QInputDialog.getText(
+            self, "添加指令", "触发词:", QLineEdit.EchoMode.Normal
+        )
+        if not ok or not trigger:
+            return
+
+        # 选择动作
+        actions = [
+            ("show_time", "显示时间"),
+            ("show_date", "显示日期"),
+            ("show_greeting", "显示问候语"),
+            ("play_happy", "播放开心动画"),
+            ("play_dance", "播放跳舞动画"),
+            ("show_status", "显示状态"),
+            ("show_dialogue", "显示自定义对话"),
+        ]
+
+        action, ok = QInputDialog.getItem(
+            self, "选择动作", "动作:", [f"{a[0]} - {a[1]}" for a in actions], 0, False
+        )
+        if not ok:
+            return
+
+        action_key = action.split(" - ")[0]
+
+        # 如果是 show_dialogue，获取自定义文本
+        custom_text = ""
+        if action_key == "show_dialogue":
+            custom_text, ok = QInputDialog.getText(
+                self, "自定义对话", "显示文本:", QLineEdit.EchoMode.Normal
+            )
+            if not ok:
+                return
+
+        # 添加到配置
+        commands = self._current.get("voice.commands.custom", [])
+        cmd = {
+            "trigger": trigger,
+            "action": action_key,
+            "description": custom_text or action.split(" - ")[1],
+        }
+        if custom_text:
+            cmd["custom_text"] = custom_text
+        commands.append(cmd)
+        self._current["voice.commands.custom"] = commands
+
+        # 更新列表
+        self._refresh_commands_list()
+        self._dirty = True
+
+    def _edit_command(self):
+        """编辑选中的指令。"""
+        row = self._commands_list.currentRow()
+        if row < 0:
+            return
+
+        commands = self._current.get("voice.commands.custom", [])
+        if row >= len(commands):
+            return
+
+        cmd = commands[row]
+
+        # 编辑触发词
+        trigger, ok = QInputDialog.getText(
+            self, "编辑指令", "触发词:", QLineEdit.EchoMode.Normal, cmd["trigger"]
+        )
+        if not ok or not trigger:
+            return
+
+        cmd["trigger"] = trigger
+        self._current["voice.commands.custom"] = commands
+
+        # 更新列表
+        self._refresh_commands_list()
+        self._dirty = True
+
+    def _delete_command(self):
+        """删除选中的指令。"""
+        row = self._commands_list.currentRow()
+        if row < 0:
+            return
+
+        commands = self._current.get("voice.commands.custom", [])
+        if row >= len(commands):
+            return
+
+        cmd = commands.pop(row)
+        self._current["voice.commands.custom"] = commands
+
+        # 更新列表
+        self._refresh_commands_list()
+        self._dirty = True
+
+    def _refresh_commands_list(self):
+        """刷新指令列表显示。"""
+        self._commands_list.clear()
+        commands = self._current.get("voice.commands.custom", [])
+        for cmd in commands:
+            trigger = cmd.get("trigger", "")
+            action = cmd.get("action", "")
+            self._commands_list.addItem(f"{trigger} -> {action}")
+
     def _apply_preview(self, key, value):
         """更新临时配置，发出预览信号，"""
         self._current[key] = value
@@ -180,6 +326,13 @@ class SettingsPanel(QWidget):
             self._current.get("behavior.dialogue_enabled", True)
         )
 
+        # 加载唤醒词
+        wake_words = self._current.get("voice.commands.wake_words", ["hey nina", "小猫", "nina"])
+        self._wake_words_input.setText(", ".join(wake_words))
+
+        # 加载指令列表
+        self._refresh_commands_list()
+
         # 更新标签显示
         self._size_label.setText(f"{self._size_slider.value()}%")
         self._opacity_label.setText(f"{self._opacity_slider.value()}%")
@@ -197,6 +350,16 @@ class SettingsPanel(QWidget):
         for key in _PANEL_KEYS:
             if key in self._current:
                 self._config.set(key, self._current[key])
+
+        # 保存唤醒词
+        wake_text = self._wake_words_input.text()
+        wake_words = [w.strip() for w in wake_text.split(",") if w.strip()]
+        self._config.set("voice.commands.wake_words", wake_words)
+
+        # 保存自定义指令
+        commands = self._current.get("voice.commands.custom", [])
+        self._config.set("voice.commands.custom", commands)
+
         self._config.save()
 
         self._initial = self._current.copy()
@@ -214,6 +377,8 @@ class SettingsPanel(QWidget):
             "window.always_on_top": True,
             "behavior.auto_move": True,
             "behavior.dialogue_enabled": True,
+            "voice.commands.wake_words": ["hey nina", "小猫", "nina"],
+            "voice.commands.custom": [],
         }
         # 更新 _current 为默认值
         for key, val in defaults.items():
@@ -225,6 +390,11 @@ class SettingsPanel(QWidget):
         self._topmost_check.setChecked(defaults["window.always_on_top"])
         self._auto_move_check.setChecked(defaults["behavior.auto_move"])
         self._dialogue_check.setChecked(defaults["behavior.dialogue_enabled"])
+
+        # 重置唤醒词和指令
+        self._wake_words_input.setText(", ".join(defaults["voice.commands.wake_words"]))
+        self._refresh_commands_list()
+
         self._size_label.setText(f"{self._size_slider.value()}%")
         self._opacity_label.setText(f"{self._opacity_slider.value()}%")
 
