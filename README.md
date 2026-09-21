@@ -19,7 +19,7 @@
 
 GBC Nina 是一款轻量级 Windows 桌面宠物，基于 Python + PySide6 构建。她会陪伴你工作、学习，有自己的情绪和行为节奏——安静但好奇，偶尔主动，大部分时间自处。
 
-> **当前状态**: v0.1.0，已实现透明窗口、动画播放、自主行为、鼠标交互、对话气泡、系统托盘、设置面板、语音唤醒、自定义语音指令等核心功能。
+> **当前状态**: v0.1.0，已实现透明窗口、动画播放、自主行为、鼠标交互、对话气泡、系统托盘、设置面板、语音情绪识别、自定义语音指令等核心功能。
 
 ---
 
@@ -31,10 +31,11 @@ GBC Nina 的核心目标是提供一个 **有生命感** 的桌面伴侣，而�
 
 - **核心层 (core)**: 透明窗口管理、宠物实体、事件总线（模块间通信）、配置管理。
 - **动画层 (animation)**: 精灵图加载器 + 动画管理器，支持多动画切换、帧率控制、循环/单次播放。
-- **行为层 (behavior)**: 有限状态机引擎，管理 Nina 的自主行为决策（idle → walk → sleep 等状态转换）。
+- **行为层 (behavior)**: 有限状态机引擎 + 情感系统，管理 Nina 的自主行为决策和情绪变化。
 - **交互层 (interaction)**: 鼠标事件处理，将原始输入转化为语义化事件（单击、双击、悬停、拖动）。
-- **对话层 (dialogue)**: 气泡 UI + 内容管理器，根据时间、状态、交互事件动态选择对话内容。
-- **界面层 (ui)**: 系统托盘、设置面板。
+- **对话层 (dialogue)**: 气泡 UI + 内容管理器，根据时间、状态、交互事件、语音情绪动态选择对话内容。
+- **语音层 (voice)**: 麦克风采集 → VAD 分段 → 语音识别 → 情绪分析 → 指令执行。
+- **界面层 (ui)**: 系统托盘、设置面板（含语音指令管理）。
 - **工具层 (utils)**: JSON 数据持久化存储。
 
 模块间通过 **事件总线 (EventBus)** 解耦通信，不直接引用彼此，便于扩展和维护。
@@ -45,27 +46,25 @@ GBC Nina 的核心目标是提供一个 **有生命感** 的桌面伴侣，而�
 
 - **透明无边框窗口** — 无边框、透明背景、始终置顶、不在任务栏显示，可自由拖动。
 
-- **动画系统** — 支持 7 种动画（idle / walk_left / walk_right / typing / typing_red / watching / sleep），每种动画独立帧率，支持循环和单次播放，通过 EventBus 广播动画状态变化。
+- **动画系统** — 支持 7 种动画（idle / walk_left / walk_right / typing / typing_red / watching / sleep），每种动画独立帧率，支持循环和单次播放。
 
-- **行为状态机** — 通用有限状态机引擎，定义 7 种行为状态（idle / walk / sleep / watch / typing / clicked / dragged），状态间通过条件自动转换，支持优先级和用户行为打断。
+- **行为状态机** — 通用有限状态机引擎，定义 7 种行为状态，状态间通过条件自动转换，支持优先级和用户行为打断。
 
-- **鼠标交互** — 支持单击、双击、右键、拖动、鼠标悬停、长时间无交互检测，将原始输入转化为语义化事件。
+- **情感系统** — 管理 Nina 的内部情感状态（精力、快乐、好奇心、困倦、依恋），影响行为权重，用户交互和语音情绪都会改变情感值。
 
-- **对话气泡** — 圆角气泡 + 三角尾巴，根据当前时间（早/中/晚/深夜）、Nina 状态、用户行为动态选择对话内容，支持定时随机对话。
+- **鼠标交互** — 支持单击、双击、右键、拖动、鼠标悬停、长时间无交互检测。
 
-- **系统托盘** — 猫爪图标，右键菜单支持显示/隐藏/设置/退出，双击图标显示窗口。
+- **对话气泡** — 圆角气泡 + 三角尾巴，根据时间、状态、交互事件、语音情绪动态选择对话内容。
 
-- **设置面板** — 可调整窗口大小（50%~200%）、透明度（30%~100%）、始终置顶、自动移动、对话开关。
+- **系统托盘** — 猫爪图标，右键菜单支持显示/隐藏/设置/退出。
 
-- **配置管理** — 支持默认配置 + 用户配置覆盖，JSON 格式持久化。
+- **设置面板** — 可调整窗口大小、透明度、置顶、自动移动、对话开关，以及语音指令管理。
 
-- **事件驱动架构** — 模块间通过 EventBus 发送/监听事件通信，松耦合易扩展。
+- **语音情绪识别（Hybrid 双 Provider）** — AssemblyAI 负责高质量转录与英语情绪，SenseVoice 负责中文情绪、语种识别与事件检测，两者并行执行并按语言合并结果，支持单 Provider 降级。
 
-- **语音唤醒** — 基于 Vosk 离线语音识别，说"嘿，Nina"唤醒，支持自定义唤醒词变体，非 sleep 状态下可直接说命令。
+- **语音情绪响应** — 用户说话时，Nina 会识别你的情绪并做出反应：你开心她也开心，你难过她会安慰你。
 
-- **自定义语音指令** — 用户可自定义语音触发词和对应动作（打开网页 / 打开应用），通过设置面板管理，数据持久化到配置文件。
-
-- **语音情绪识别（Hybrid 双 Provider）** — AssemblyAI 负责高质量转录与英语情绪，SenseVoice 负责中文情绪、语种识别与事件检测，两者并行执行并按语言合并结果，支持单 Provider 降级。详见 [docs/voice.md](docs/voice.md)。
+- **自定义语音指令** — 用户可通过设置面板自定义唤醒词和语音指令，支持打开网站、显示时间、播放动画等动作。
 
 ---
 
@@ -77,15 +76,17 @@ GBC Nina 的核心目标是提供一个 **有生命感** 的桌面伴侣，而�
 | -------- | -------------------------- |
 | 操作系统 | Windows 10/11              |
 | Python   | 3.10 或更高版本            |
-| 磁盘空间 | ~10 MB（不含 Python 环境） |
+| 磁盘空间 | ~50 MB（含本地语音模型）   |
 
 ### 2. Python 包依赖
 
-| 包名       | 版本     | 用途                                            |
-| ---------- | -------- | ----------------------------------------------- |
-| PySide6    | >= 6.5.0 | Qt for Python，提供透明窗口、动画、系统托盘支持 |
-| assemblyai | >= 1.5.4 | AssemblyAI 的官方 Python SDK                    |
-| numpy      | ==2.4.4  | 提供数学函数                                    |
+| 包名        | 版本     | 用途                                            |
+| ----------- | -------- | ----------------------------------------------- |
+| PySide6     | >= 6.5.0 | Qt for Python，提供透明窗口、动画、系统托盘支持 |
+| assemblyai  | >= 1.5.4 | AssemblyAI 的官方 Python SDK                    |
+| numpy       | ==2.4.4  | 数学函数、音频处理                              |
+| sounddevice | >= 0.4.6 | 麦克风音频采集                                  |
+| python-dotenv | >= 1.0.0 | 环境变量管理                                  |
 
 安装命令：
 
@@ -119,7 +120,17 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 3. 运行
+### 3. 配置 API Key（可选）
+
+如果需要使用 AssemblyAI 云端语音识别，在项目根目录创建 `.env` 文件：
+
+```
+ASSEMBLYAI_API_KEY=your_api_key_here
+```
+
+> 不配置 API Key 也可以运行，将使用纯本地 SenseVoice 模型。
+
+### 4. 运行
 
 ```bash
 # 方式一：命令行
@@ -170,53 +181,85 @@ python main.py
 
 设置修改后点击"保存"立即生效，配置持久化到 `config/user.json`。
 
-### 5. 对话系统
+### 4. 对话系统
 
 Nina 的对话根据以下条件动态选择：
 
 - **时间段**: 早晨/下午/晚上/深夜各有不同台词
 - **交互事件**: 点击、拖动、悬停触发不同反应
+- **语音情绪**: 听到你开心/难过/生气时做出反应
 - **空闲状态**: 随机显示自言自语
 - **睡眠状态**: 显示睡觉相关台词
 
 对话间隔 30~60 秒随机，避免频繁打扰。
 
-### 6. 语音情绪识别（Hybrid 双 Provider）
+### 5. 语音情绪识别
 
 语音模块支持三种 provider：
 
-| provider | 定位 | 能力 |
-| -------- | ---- | ---- |
-| `assemblyai` | 云端 | 高质量转录、英语情绪分析 |
-| `sensevoice` | 本地 GGUF | 中文情绪、语种识别、音频事件检测 |
-| `hybrid` | 组合（推荐） | 两者并行，按语言合并结果 |
+| provider   | 定位       | 能力                                   |
+| ---------- | ---------- | -------------------------------------- |
+| `assemblyai` | 云端     | 高质量转录、英语情绪分析               |
+| `sensevoice` | 本地 GGUF | 中文情绪、语种识别、音频事件检测       |
+| `hybrid`   | 组合（推荐）| 两者并行，按语言合并结果              |
 
 `hybrid` 模式下，AssemblyAI 与 SenseVoice 并行处理同一段音频，再按语言合并：
 
-- **文本**优先 AssemblyAI，为空时用 SenseVoice；
-- **语言**优先 SenseVoice，失败时退回 AssemblyAI；
-- **情绪**在语言为 `en` 且 AssemblyAI 情绪有效时用 AssemblyAI，否则用 SenseVoice；
-- 事件 payload 中的 `emotion_source` 标记情绪来源（`assemblyai` / `sensevoice`）。
+- **文本**优先 AssemblyAI，为空时用 SenseVoice
+- **语言**优先 SenseVoice，失败时退回 AssemblyAI
+- **情绪**在语言为 `en` 且 AssemblyAI 情绪有效时用 AssemblyAI，否则用 SenseVoice
 
-任一 Provider 失败时自动降级到另一个；`voice.hybrid.allow_partial_provider`
-控制是否允许只就绪一个 Provider 也继续工作。配置示例：
+### 6. 语音情绪响应
 
-```json
-"voice": {
-  "provider": "hybrid",
-  "sample_rate": 16000,
-  "assemblyai": { "api_key": "<你的 Key>", "language": "en" },
-  "sensevoice": {
-    "exe_path": "bin/sense-voice-main.exe",
-    "model_path": "models/sensevoice-small-q8.gguf",
-    "language": "zh"
-  },
-  "hybrid": { "allow_partial_provider": true, "max_workers": 2 }
-}
-```
+用户说话时，Nina 会识别情绪并做出反应：
 
-AssemblyAI 的 Key 也可以通过环境变量 `ASSEMBLYAI_API_KEY` 提供。
-完整工作流程、合并规则与全部配置项见 [docs/voice.md](docs/voice.md)。
+| 用户情绪 | Nina 反应                | 情感变化           |
+| -------- | ------------------------ | ------------------ |
+| HAPPY    | 显示快乐台词             | 快乐 +3~8          |
+| SAD      | 显示安慰台词             | 快乐 -3, 依恋 +2  |
+| ANGRY    | 显示冷静台词             | 快乐 -2            |
+| NEUTRAL  | 轻微好奇                 | 好奇心 +0.5        |
+
+### 7. 自定义语音指令
+
+#### 唤醒词
+
+默认唤醒词：`hey nina`、`小猫`、`nina`
+
+说唤醒词后，Nina 进入聆听模式（5秒），等待你的指令。
+
+#### 预设指令
+
+| 触发词   | 动作        | 说明         |
+| -------- | ----------- | ------------ |
+| 几点了   | show_time   | 显示当前时间 |
+| 今天几号 | show_date   | 显示当前日期 |
+| 早上好   | show_greeting | 显示问候语 |
+| 开心     | play_happy  | 播放开心动画 |
+| 跳舞     | play_dance  | 播放跳舞动画 |
+| 状态     | show_status | 显示状态信息 |
+
+#### 添加自定义指令
+
+1. 右键托盘图标 → 设置
+2. 在"语音指令"区域点击"添加"
+3. 输入触发词（如"打开百度"）
+4. 选择动作类型（如"open_website"）
+5. 输入网址（如"baidu.com"）
+6. 点击"保存"
+
+支持的动作类型：
+
+| 动作           | 说明             |
+| -------------- | ---------------- |
+| show_time      | 显示时间         |
+| show_date      | 显示日期         |
+| show_greeting  | 显示问候语       |
+| play_happy     | 播放开心动画     |
+| play_dance     | 播放跳舞动画     |
+| show_status    | 显示状态信息     |
+| show_dialogue  | 显示自定义对话   |
+| open_website   | 打开网站         |
 
 ---
 
@@ -229,7 +272,6 @@ AssemblyAI 的 Key 也可以通过环境变量 `ASSEMBLYAI_API_KEY` 提供。
 GBC-Nina/
 ├── main.py                        # 程序入口
 ├── run.bat                        # 一键启动（cmd）
-├── run.ps1                        # 一键启动（PowerShell）
 ├── requirements.txt               # Python 依赖
 ├── README.md                      # 项目说明文档
 │
@@ -240,67 +282,67 @@ GBC-Nina/
 │   └── default.json               # 默认配置
 │
 ├── assets/                        # 精灵图资源（54张PNG）
-│   ├── cat_idle1-8.png            # 待机动画 (8帧, 165x138)
+│   ├── cat_idle1-8.png            # 待机动画 (8帧)
 │   ├── cat_walk_left1-8.png       # 向左行走动画 (8帧)
 │   ├── cat_walk_right1-8.png      # 向右行走动画 (8帧)
 │   ├── cat_typing1-8.png          # 打字动画 (8帧)
 │   ├── cat_typing_red1-8.png      # 打字变体-红色 (8帧)
 │   ├── cat_watching1-8.png        # 注视动画 (8帧)
-│   ├── cat_sleep1-2.png           # 睡觉动画 (2帧)
-│   ├── cat_tall.png               # 特殊状态-拉长
-│   ├── cat_long.png               # 特殊状态-伸长
-│   ├── cat_melt.png               # 特殊状态-融化
-│   └── cat_glitch.png             # 特殊状态-故障
+│   └── cat_sleep1-2.png           # 睡觉动画 (2帧)
+│
+├── bin/                           # 语音推理引擎
+│   └── sense-voice-main.exe       # SenseVoice 本地推理
+│
+├── models/                        # 语音模型
+│   ├── sense-voice-small-q8_0.gguf # SenseVoice 模型
+│   └── fsmn-vad.gguf              # VAD 模型
 │
 └── src/                           # 源代码
     ├── __init__.py
     ├── app.py                     # 应用管理器（核心协调器）
     │
     ├── core/                      # 核心模块
-    │   ├── __init__.py
-    │   ├── config.py              # 配置管理（JSON读写、深度合并）
-    │   ├── event_bus.py           # 事件总线（模块间通信）
-    │   ├── window.py              # 透明窗口（无边框/置顶/拖动）
-    │   └── pet.py                 # 宠物实体（位置/朝向/状态）
+    │   ├── config.py              # 配置管理
+    │   ├── event_bus.py           # 事件总线
+    │   ├── window.py              # 透明窗口
+    │   └── pet.py                 # 宠物实体
     │
     ├── animation/                 # 动画系统
-    │   ├── __init__.py
-    │   ├── sprites.py             # 精灵图加载器（按动画分组缓存）
-    │   └── manager.py             # 动画管理器（帧播放/切换/循环）
+    │   ├── sprites.py             # 精灵图加载器
+    │   └── manager.py             # 动画管理器
     │
     ├── behavior/                  # 行为系统
-    │   ├── __init__.py
-    │   ├── state_machine.py       # 通用有限状态机引擎
-    │   └── states.py              # 7种行为状态定义
+    │   ├── state_machine.py       # 有限状态机
+    │   ├── states.py              # 行为状态定义
+    │   ├── emotion.py             # 情感系统
+    │   ├── scheduler.py           # 行为调度器
+    │   ├── controller.py          # 行为控制器
+    │   └── memory.py              # 记忆系统
     │
     ├── interaction/               # 交互系统
-    │   ├── __init__.py
-    │   └── mouse.py               # 鼠标交互（单击/双击/悬停/空闲检测）
+    │   └── mouse.py               # 鼠标交互
     │
     ├── dialogue/                  # 对话系统
-    │   ├── __init__.py
-    │   ├── bubble.py              # 对话气泡UI（圆角/三角尾巴）
-    │   └── content.py             # 对话内容管理（时间/事件感知）
+    │   ├── bubble.py              # 对话气泡UI
+    │   └── content.py             # 对话内容管理
     │
     ├── ui/                        # 界面组件
-    │   ├── __init__.py
-    │   ├── tray.py                # 系统托盘（猫爪图标）
+    │   ├── tray.py                # 系统托盘
     │   └── settings.py            # 设置面板
     │
-    ├── voice/                     # 语音情绪识别
-    │   ├── __init__.py
+    ├── voice/                     # 语音系统
     │   ├── audio_capture.py       # 麦克风采集
     │   ├── audio_segmenter.py     # VAD 音频分段
     │   ├── emotion_parser.py      # 情绪标签归一化
     │   ├── voice_manager.py       # 语音模块入口
+    │   ├── commands.py            # 语音指令管理
     │   └── providers/             # 语音提供方
     │       ├── base.py                    # 抽象接口
-    │       ├── assemblyai_provider.py     # 云端转录 + 英语情绪
-    │       ├── sensevoice_gguf_provider.py # 本地中文情绪
+    │       ├── assemblyai_provider.py     # 云端转录
+    │       ├── sensevoice_gguf_provider.py # 本地中文
     │       └── hybrid_provider.py         # 双 Provider 协同
     │
     └── utils/                     # 工具类
-        ├── __init__.py
         └── storage.py             # JSON数据持久化
 ```
 
@@ -316,34 +358,49 @@ GBC-Nina/
 
 ```
 用户操作 → Interaction → EventBus → Behavior(决策) → Animation(播放)
-                                        ↓
-                                   StateManager(更新状态)
-                                        ↓
-                                   Dialogue(显示对话)
+                                  ↓
+                             EmotionSystem(情感)
+                                  ↓
+                             Dialogue(显示对话)
+
+语音输入 → VoiceManager → EventBus → EmotionSystem(情感更新)
+                                   → CommandManager(指令执行)
+                                   → Dialogue(显示反应)
 ```
 
-### 2. 行为系统：有限状态机
+### 2. 行为系统：有限状态机 + 情感系统
 
 ```
+情感值（精力/快乐/好奇心/困倦/依恋）
+    ↓ 影响权重
 [Idle] ──随机走动──→ [Walk] ──到达目标──→ [Idle]
   │                                        ↑
   │──长时间无操作──→ [Sleep] ──被点击──→ [Idle]
   │
   │──用户点击──→ [Clicked] ──1.5秒后──→ [Idle]
   │
-  │──用户输入中──→ [Typing] ──停止输入──→ [Idle]
-  │
   │──鼠标悬停──→ [Watch] ──3秒后──→ [Idle]
 ```
 
-### 3. 动画系统：帧播放
+### 3. 语音系统：双 Provider 并行
 
 ```
-SpriteLoader（加载器）         AnimationManager（管理器）
-  ├─ load_animation()           ├─ play(name, loop)
-  ├─ load_single()              ├─ stop() / pause() / resume()
-  └─ _cache: dict               ├─ frame_changed → Signal(QPixmap)
-                                └─ QTimer 控制帧率
+麦克风 → AudioCapture → AudioSegmenter(VAD) → 并行处理
+                                                ↓
+                                    ┌───────────┴───────────┐
+                                    │                       │
+                              AssemblyAI               SenseVoice
+                              (云端转录)               (本地推理)
+                                    │                       │
+                                    └───────────┬───────────┘
+                                                ↓
+                                    HybridVoiceProvider(合并)
+                                                ↓
+                                    EmotionParser(情绪归一化)
+                                                ↓
+                                    CommandManager(指令检查)
+                                                ↓
+                                    EventBus → App(响应)
 ```
 
 ### 4. 窗口底层原理
@@ -356,7 +413,6 @@ QMainWindow + Qt.WindowFlags:
 
 WA_TranslucentBackground = True  # 透明背景
 paintEvent() → QPainter 绘制精灵帧
-mousePressEvent/MoveEvent/ReleaseEvent → 拖动逻辑
 ```
 
 ---
@@ -377,21 +433,14 @@ mousePressEvent/MoveEvent/ReleaseEvent → 拖动逻辑
 ### 运行问题
 
 <details>
-<summary><b>Q1: 启动报错 `ModuleNotFoundError: No module named 'PySide6'`</b></summary>
-
-**原因**: 未安装依赖或未激活虚拟环境。
+<summary><b>Q1: 启动报错 `ModuleNotFoundError`</b></summary>
 
 **解决方案**:
 
 ```bash
-# 创建并激活虚拟环境
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-
-# 安装依赖
 pip install -r requirements.txt
-
-# 运行
 python main.py
 ```
 
@@ -400,144 +449,40 @@ python main.py
 <details>
 <summary><b>Q2: 窗口出现了但看不到猫咪</b></summary>
 
-**可能原因**: 精灵图路径错误或资源文件缺失。
-
 **解决方案**:
 
-- 确认 `assets/` 目录下有完整的 PNG 文件。
-- 检查控制台输出是否有 `[SpriteLoader]` 相关日志。
-- 尝试手动测试精灵图加载：
-
-```bash
-python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_all()"
-```
+- 确认 `assets/` 目录下有完整的 PNG 文件
+- 检查控制台是否有 `[SpriteLoader]` 相关日志
 
 </details>
-
-<details>
-<summary><b>Q3: 窗口出现后立即消失</b></summary>
-
-**可能原因**: 程序启动后遇到异常退出。
-
-**解决方案**:
-
-- 在命令行运行 `python main.py` 查看错误输出。
-- 检查是否有其他程序占用或杀毒软件拦截。
-
-</details>
-
-### 功能问题
-
-<details>
-<summary><b>Q4: Nina 一直站着不动</b></summary>
-
-**可能原因**: 行为状态机未正确启动或配置中 `auto_move` 为 false。
-
-**解决方案**:
-
-- 检查 `config/default.json` 中 `behavior.auto_move` 是否为 `true`。
-- 查看控制台是否有 `[StateMachine]` 相关日志。
-
-</details>
-
-<details>
-<summary><b>Q5: 对话气泡不显示</b></summary>
-
-**可能原因**: 配置中 `dialogue_enabled` 为 false，或对话内容为空。
-
-**解决方案**:
-
-- 检查 `config/default.json` 中 `behavior.dialogue_enabled` 是否为 `true`。
-- 对话有 30~60 秒随机间隔，耐心等待或单击 Nina 触发。
-
-</details>
-
-<details>
-<summary><b>Q6: 设置修改后不生效</b></summary>
-
-**解决方案**:
-
-- 修改后必须点击"保存"按钮。
-- 部分设置（如大小）需要重启程序。
-
-</details>
-
-### 开发问题
-
-<details>
-<summary><b>Q7: 如何添加新的动画？</b></summary>
-
-**步骤**:
-
-1. 将动画帧 PNG 文件放入 `assets/` 目录，命名为 `cat_xxx1.png`, `cat_xxx2.png`, ...
-2. 在 `src/animation/sprites.py` 的 `ANIMATION_MAP` 中添加映射：`"xxx": "cat_xxx"`
-3. 在 `src/animation/manager.py` 的 `_fps_map` 中添加帧率：`"xxx": 6`
-4. 在 `src/behavior/states.py` 中创建对应的状态类
-5. 在 `src/behavior/state_machine.py` 中注册状态
-
-</details>
-
-<details>
-<summary><b>Q8: 如何添加新的对话内容？</b></summary>
-
-**步骤**:
-
-1. 在 `src/dialogue/content.py` 的 `DialogueContent` 类中添加新的列表
-2. 创建对应的 `get_xxx_line()` 方法
-3. 在需要触发的地方通过 EventBus 发送事件或直接调用
-
-</details>
-
----
 
 ### 语音问题
 
 <details>
-<summary><b>Q7: 语音唤醒不工作</b></summary>
+<summary><b>Q3: 语音识别不工作</b></summary>
 
 **可能原因**:
 
 - 没有麦克风或麦克风权限被拒绝
-- Vosk 模型未下载（首次运行会自动下载 ~44MB）
+- SenseVoice 模型文件缺失
 
 **解决方案**:
 
 - 确认麦克风已连接且权限正常
-- 查看控制台是否有 `[Voice]` 相关日志
-- 检查 `models/` 目录下是否有 `vosk-model-small-cn-0.22` 文件夹
+- 检查 `models/` 目录下是否有模型文件
+- 查看控制台 `[Voice]` 相关日志
 
 </details>
 
 <details>
-<summary><b>Q8: 说了命令但没反应</b></summary>
-
-**可能原因**:
-
-- 处于 sleep 状态，需要先说"嘿，Nina"唤醒
-- Vosk 识别文本与命令不匹配
-
-**解决方案**:
-
-- 非 sleep 状态下可直接说命令
-- sleep 状态下先说唤醒词，5 秒内说命令
-- 查看控制台 `[Voice Recognized]` 日志确认识别结果
-
-</details>
-
-<details>
-<summary><b>Q9: 如何添加自定义语音指令？</b></summary>
+<summary><b>Q4: 如何添加自定义语音指令？</b></summary>
 
 **步骤**:
 
 1. 右键托盘图标 → 设置
-2. 在"自定义语音指令"区域点击"添加"
-3. 输入触发语句（逗号分隔）、选择动作类型、输入目标
-4. 点击确定，然后点击"保存"
-
-支持的动作类型：
-
-- **打开网页**: 输入 URL（如 `https://www.baidu.com`）
-- **打开应用**: 输入应用完整路径（如 `C:\Windows\notepad.exe`）
+2. 在"语音指令"区域点击"添加"
+3. 输入触发词，选择动作类型
+4. 点击"保存"
 
 </details>
 
@@ -547,11 +492,11 @@ python -c "from src.animation.sprites import SpriteLoader; SpriteLoader().load_a
 
 欢迎提交 Issue 和 Pull Request。在贡献前请确保：
 
-- 代码遵循现有风格（缩进 4 空格，命名规范）。
-- 使用 UTF-8 编码提交代码。
-- 添加或修改功能时更新相关文档。
-- 确保本地测试通过（程序能正常启动和运行）。
-- 对于较大的改动，请先开 Issue 讨论。
+- 代码遵循现有风格（缩进 4 空格，命名规范）
+- 使用 UTF-8 编码提交代码
+- 添加或修改功能时更新相关文档
+- 确保本地测试通过
+- 对于较大的改动，请先开 Issue 讨论
 
 ---
 
