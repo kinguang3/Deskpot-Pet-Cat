@@ -54,6 +54,7 @@ from src.core.config import ConfigManager
 from src.utils.logger import get_logger
 from src.voice.providers.base import BaseVoiceProvider
 
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 logger = get_logger(__name__)
 
 
@@ -276,6 +277,7 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             errors="replace",
             timeout=self._timeout,
             check=False,  # 非零退出码也先拿输出，由解析层判断
+            creationflags=_CREATE_NO_WINDOW,
         )
 
         stderr = (result.stderr or "").strip()
