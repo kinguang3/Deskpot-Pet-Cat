@@ -42,3 +42,4 @@ logs/
 
 # Models (downloaded, not source)
 VOICE_WAKE_DEBUG_LOG.md
+fbank_lfr_cmvn_feature.json
