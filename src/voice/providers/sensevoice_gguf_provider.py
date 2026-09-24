@@ -47,6 +47,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import wave
 from pathlib import Path
 
@@ -81,6 +82,9 @@ _KNOWN_LANGUAGES = {"ZH", "EN", "YUE", "JA", "KO", "NOSPEECH"}
 
 # 二进制不输出前缀标签时使用的默认语种（auto 无法离线确定）
 _AUTO_LANGUAGE = "auto"
+
+#: 连续失败多少次后禁用该 Provider，避免反复崩溃拖垮 hybrid
+MAX_CONSECUTIVE_FAILURES = 3
 
 
 class SenseVoiceGGUFProvider(BaseVoiceProvider):
@@ -121,6 +125,11 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         self._language = self._config.get(
             "voice.sensevoice.language", _AUTO_LANGUAGE
         )
+
+        # 串行化推理：sense-voice-main.exe 并发运行会触发 0xC0000005 崩溃
+        self._infer_lock = threading.Lock()
+        # 连续失败计数，达到阈值后禁用该 Provider
+        self._consecutive_failures = 0
 
         self._ready = self._check_ready()
         if self._ready:
@@ -168,8 +177,16 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         wav_path = None
         try:
             wav_path = self._pcm_to_wav(audio_bytes)
-            raw_output, stderr = self._run_inference(wav_path)
+            # 串行化：sense-voice-main.exe 同时只能跑一个实例
+            with self._infer_lock:
+                raw_output, stderr, success = self._run_inference(wav_path)
             parsed = self._parse_output(raw_output)
+
+            if success:
+                # 成功一次就重置失败计数（含静音段等无输出但正常退出的情况）
+                self._consecutive_failures = 0
+            else:
+                self._on_inference_failure()
 
             # stderr 一并带回，便于排查二进制运行问题
             parsed["raw"] = {
@@ -184,12 +201,30 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             logger.error(
                 "SenseVoice inference timed out after %.1fs", self._timeout
             )
+            self._on_inference_failure()
             return self._empty_result()
         except Exception:
             logger.exception("SenseVoice inference failed")
+            self._on_inference_failure()
             return self._empty_result()
         finally:
             self._remove_temp_wav(wav_path)
+
+    def _on_inference_failure(self):
+        """记录一次失败；连续失败达到阈值后禁用该 Provider"""
+        self._consecutive_failures += 1
+        logger.warning(
+            "SenseVoice inference failure %d/%d",
+            self._consecutive_failures,
+            MAX_CONSECUTIVE_FAILURES,
+        )
+        if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+            self._ready = False
+            logger.error(
+                "SenseVoice 连续失败 %d 次，已自动禁用（hybrid 将降级为 "
+                "AssemblyAI 单 Provider）",
+                self._consecutive_failures,
+            )
 
     def close(self) -> None:
         """无需释放的持久资源，保持接口兼容"""
@@ -252,7 +287,7 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         return wav_path
 
     def _run_inference(self, wav_path: str):
-        """调用二进制程序，返回 (stdout 文本, stderr 文本)"""
+        """调用二进制程序，返回 (stdout 文本, stderr 文本, 是否成功)"""
         cmd = [
             str(self._exe_path),
             "-m",
@@ -283,14 +318,21 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         stderr = (result.stderr or "").strip()
 
         if result.returncode != 0:
-            logger.error(
-                "SenseVoice exited with code %d: %s",
-                result.returncode,
-                stderr,
-            )
-            return "", stderr
+            # 3221225501 (0xC0000005) = STATUS_ACCESS_VIOLATION
+            # Python 在 Windows 上可能以有符号形式报告：-1073741819
+            if result.returncode in (-1073741819, 3221225501):
+                logger.error(
+                    "SenseVoice 崩溃 (0xC0000005 内存访问冲突): %s", stderr
+                )
+            else:
+                logger.error(
+                    "SenseVoice exited with code %d: %s",
+                    result.returncode,
+                    stderr,
+                )
+            return "", stderr, False
 
-        return (result.stdout or "").strip(), stderr
+        return (result.stdout or "").strip(), stderr, True
 
     def _remove_temp_wav(self, wav_path):
         """删除临时 WAV，忽略文件不存在等错误"""

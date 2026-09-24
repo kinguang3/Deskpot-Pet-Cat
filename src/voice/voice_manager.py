@@ -36,7 +36,9 @@ class VoiceManager(QObject):
     state_changed = Signal(bool)  # True=running, False=stopped
 
     # 并发分析上限：超过则丢弃新 segment，避免 CPU 打满
-    MAX_CONCURRENT_ANALYZE = 4
+    # AssemblyAI 轮询耗时较长（30~60s/segment），4 不够用会导致频繁丢弃
+    # 可通过 voice.max_concurrent_analyze 配置覆盖
+    MAX_CONCURRENT_ANALYZE = 8
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -98,12 +100,15 @@ class VoiceManager(QObject):
         self._create_segmenter(sample_rate, channels)
 
         # 线程池负责执行分析任务，信号量限制排队数量
+        self._max_concurrent = self._config.get(
+            "voice.max_concurrent_analyze", self.MAX_CONCURRENT_ANALYZE
+        )
         self._executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.MAX_CONCURRENT_ANALYZE,
+            max_workers=self._max_concurrent,
             thread_name_prefix="VoiceAnalyze",
         )
         self._analyze_semaphore = threading.BoundedSemaphore(
-            self.MAX_CONCURRENT_ANALYZE
+            self._max_concurrent
         )
 
         self._capture = AudioCapture(
@@ -353,7 +358,7 @@ class VoiceManager(QObject):
         if not semaphore.acquire(blocking=False):
             logger.warning(
                 "Analyze queue full (%d), dropping segment",
-                self.MAX_CONCURRENT_ANALYZE,
+                getattr(self, "_max_concurrent", self.MAX_CONCURRENT_ANALYZE),
             )
             return
 
@@ -462,7 +467,9 @@ class VoiceManager(QObject):
             "provider_ready": (
                 self._provider.is_ready() if self._provider else False
             ),
-            "max_concurrent_analyze": self.MAX_CONCURRENT_ANALYZE,
+            "max_concurrent_analyze": getattr(
+                self, "_max_concurrent", self.MAX_CONCURRENT_ANALYZE
+            ),
             "command_manager": self._command_manager.get_debug_info(),
         }
 
