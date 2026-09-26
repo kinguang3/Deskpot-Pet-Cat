@@ -148,9 +148,9 @@ class App(QObject):
         self._event_bus.on("interaction.hover_enter", self._on_hover_enter)
         self._event_bus.on("interaction.hover_leave", self._on_hover_leave)
 
-        # 窗口拖动事件
+        # 窗口拖动事件（mouse_moved 仅在拖动时发射，mouse_pressed 每次点击都发射）
         self._event_bus.on(
-            "window.mouse_pressed", self._on_window_mouse_pressed
+            "window.mouse_moved", self._on_window_mouse_moved
         )
 
         # 状态变化事件
@@ -368,12 +368,12 @@ class App(QObject):
         """鼠标悬停离开。"""
         pass
 
-    def _on_window_mouse_pressed(self, data: dict):
-        """窗口鼠标按下 → 检查是否为拖动开始。"""
-        if not self._state_machine.is_state("dragged"):
-            # 拖动 → 快乐小幅下降
-            self._emotion_system.on_user_drag()
-            self._behavior_controller.on_drag_start()
+    def _on_window_mouse_moved(self, data: dict):
+        """窗口拖动开始 → 进入 dragged 状态。"""
+        if self._state_machine.is_state("dragged"):
+            return
+        self._emotion_system.on_user_drag()
+        self._behavior_controller.on_drag_start()
 
     def _on_state_changed(self, data: dict):
         """状态变化回调。"""

@@ -61,7 +61,7 @@ class VoiceManager(QObject):
         self._provider_name = "assemblyai"
         self._sample_rate = 16000
         self._channels = 1
-        self._lock = threading.Lock()
+
 
         logger.debug("VoiceManager initialized")
 

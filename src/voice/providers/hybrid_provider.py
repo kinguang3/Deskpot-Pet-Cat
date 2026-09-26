@@ -285,7 +285,7 @@ class HybridVoiceProvider(BaseVoiceProvider):
         if sentiment not in _VALID_SENTIMENTS:
             return False
         confidence = float(assemblyai_result.get("confidence") or 0.0)
-        if confidence <= 0.0 and not assemblyai_result.get("segments"):
+        if confidence <= 0.0 or not assemblyai_result.get("segments"):
             return False
         return True
 

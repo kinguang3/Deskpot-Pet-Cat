@@ -127,6 +127,7 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         )
 
         # 串行化推理：sense-voice-main.exe 并发运行会触发 0xC0000005 崩溃
+        self._current_process: subprocess.Popen | None = None
         self._infer_lock = threading.Lock()
         # 连续失败计数，达到阈值后禁用该 Provider
         self._consecutive_failures = 0
@@ -227,8 +228,20 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             )
 
     def close(self) -> None:
-        """无需释放的持久资源，保持接口兼容"""
-        return None
+        """终止正在运行的推理子进程，释放资源。"""
+        if self._current_process is not None:
+            try:
+                self._current_process.terminate()
+                self._current_process.wait(timeout=2)
+            except Exception:
+                try:
+                    self._current_process.kill()
+                    self._current_process.wait(timeout=2)
+                except Exception:
+                    pass
+                self._current_process = None
+            self._ready = False
+            logger.info("SenseVoice 子进程已终止")
 
     # 内部实现
 
@@ -304,35 +317,47 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
 
         logger.debug("Running SenseVoice: %s", " ".join(cmd))
 
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=self._timeout,
-            check=False,  # 非零退出码也先拿输出，由解析层判断
             creationflags=_CREATE_NO_WINDOW,
         )
+        self._current_process = proc
+        try:
+            stdout, stderr = proc.communicate(timeout=self._timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            stdout, stderr = proc.communicate()
+            logger.error(
+                "SenseVoice 推理超时 %.1fs", self._timeout
+            )
+            self._current_process = None
+            return "", stderr, False
+        self._current_process = None
 
-        stderr = (result.stderr or "").strip()
+        stderr = (stderr or "").strip()
 
-        if result.returncode != 0:
-            # 3221225501 (0xC0000005) = STATUS_ACCESS_VIOLATION
-            # Python 在 Windows 上可能以有符号形式报告：-1073741819
-            if result.returncode in (-1073741819, 3221225501):
+        if proc.returncode != 0:
+            if proc.returncode in (-1073741819, 3221225501):
                 logger.error(
                     "SenseVoice 崩溃 (0xC0000005 内存访问冲突): %s", stderr
                 )
             else:
                 logger.error(
                     "SenseVoice exited with code %d: %s",
-                    result.returncode,
+                    proc.returncode,
                     stderr,
                 )
             return "", stderr, False
 
-        return (result.stdout or "").strip(), stderr, True
+        return (stdout or "").strip(), stderr, True
 
     def _remove_temp_wav(self, wav_path):
         """删除临时 WAV，忽略文件不存在等错误"""

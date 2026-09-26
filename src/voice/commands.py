@@ -9,6 +9,7 @@
 """
 
 import re
+import time
 from datetime import datetime
 from typing import Optional, Callable
 
@@ -147,7 +148,7 @@ class CommandManager:
 
     def handle_play_dance(self, context: dict):
         """播放跳舞动画。"""
-        self._event_bus.emit("command.play_animation", {"animation": "walk"})
+        self._event_bus.emit("command.play_animation", {"animation": "dance"})
 
     def handle_show_status(self, context: dict):
         """显示状态信息。"""
@@ -226,14 +227,13 @@ class CommandManager:
         """设置聆听模式状态。"""
         self._is_listening = listening
         if listening:
-            self._last_wake_time = __import__("time").time() * 1000
+            self._last_wake_time = time.time() * 1000
         logger.debug("Listening mode: %s", listening)
 
     def is_wake_timeout(self) -> bool:
         """检查唤醒是否超时。"""
         if not self._is_listening:
             return False
-        import time
         elapsed = (time.time() * 1000) - self._last_wake_time
         return elapsed > self._wake_timeout_ms
 

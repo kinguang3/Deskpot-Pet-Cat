@@ -24,7 +24,6 @@ BEHAVIOR_WATCH = "watch"
 BEHAVIOR_IDLE = "idle"
 BEHAVIOR_SLEEP = "sleep"
 BEHAVIOR_HAPPY = "happy"
-BEHAVIOR_LOOK = "look"
 
 
 class BehaviorScheduler:
