@@ -44,3 +44,4 @@ logs/
 VOICE_WAKE_DEBUG_LOG.md
 fbank_lfr_cmvn_feature.json
 nina-cat.spec
+*.spec
