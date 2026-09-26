@@ -200,15 +200,23 @@ class HybridVoiceProvider(BaseVoiceProvider):
         assemblyai_result = assemblyai_result or {}
         sensevoice_result = sensevoice_result or {}
 
-        # 文本：优先 AssemblyAI 的高质量转录
-        text = (assemblyai_result.get("text") or "").strip()
-        if not text:
-            text = (sensevoice_result.get("text") or "").strip()
-
         # 语言：优先 SenseVoice 的语种识别，失败时退回 AssemblyAI
         language = self._pick_language(
             assemblyai_result, sensevoice_result
         )
+
+        # 文本：按语言分流
+        # - 英文：AssemblyAI 转录更准，优先采用
+        # - 中文等其他语言：SenseVoice 本地转录更准（AssemblyAI 被配置为
+        #   英语模型，转写中文不准），优先采用
+        if language.lower() == _EN_LANGUAGE:
+            text = (assemblyai_result.get("text") or "").strip()
+            if not text:
+                text = (sensevoice_result.get("text") or "").strip()
+        else:
+            text = (sensevoice_result.get("text") or "").strip()
+            if not text:
+                text = (assemblyai_result.get("text") or "").strip()
 
         # 情绪：英语且 AssemblyAI 情绪有效时用 AssemblyAI，否则用 SenseVoice
         if self._is_assemblyai_emotion_valid(assemblyai_result, language):
