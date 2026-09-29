@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QComboBox,
     QInputDialog,
+    QDialog,
+    QDialogButtonBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -194,63 +196,19 @@ class SettingsPanel(QWidget):
         self._apply_preview("behavior.dialogue_enabled", bool(state))
 
     def _add_command(self):
-        """添加新指令。"""
-        trigger, ok = QInputDialog.getText(
-            self, "添加指令", "触发词:", QLineEdit.EchoMode.Normal
-        )
-        if not ok or not trigger:
+        """添加新指令。使用单个表单对话框，避免多步弹窗导致漏选动作。"""
+        dlg = _CommandDialog(self, title="添加指令")
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
-        # 选择动作
-        actions = [
-            ("show_time", "显示时间"),
-            ("show_date", "显示日期"),
-            ("show_greeting", "显示问候语"),
-            ("play_happy", "播放开心动画"),
-            ("play_dance", "播放跳舞动画"),
-            ("show_status", "显示状态"),
-            ("show_dialogue", "显示自定义对话"),
-            ("open_website", "打开网站(需输入网址)"),
-        ]
-
-        action, ok = QInputDialog.getItem(
-            self, "选择动作", "动作:", [f"{a[1]}" for a in actions], 0, False
-        )
-        if not ok:
-            return
-
-        # 根据显示名找到动作 key（防止用户对应错）
-        action_key = None
-        for k, label in actions:
-            if label == action:
-                action_key = k
-                break
-        if action_key is None:
-            logger.warning("Unknown action selected: %s", action)
-            return
-
-        # 如果是 show_dialogue，获取自定义文本
-        custom_text = ""
-        if action_key == "show_dialogue":
-            custom_text, ok = QInputDialog.getText(
-                self, "自定义对话", "显示文本:", QLineEdit.EchoMode.Normal
-            )
-            if not ok:
-                return
-
-        # 如果是 open_website，获取网址
-        custom_url = ""
-        if action_key == "open_website":
-            custom_url, ok = QInputDialog.getText(
-                self, "打开网站", "网址:", QLineEdit.EchoMode.Normal,
-                placeholderText="example.com"
-            )
-            if not ok or not custom_url:
-                return
+        trigger = dlg.trigger_text()
+        action_key = dlg.action_key()
+        custom_text = dlg.custom_text()
+        custom_url = dlg.custom_url()
 
         # 添加到配置
         commands = self._current.get("voice.commands.custom", [])
-        action_label = dict(actions).get(action_key, action_key)
+        action_label = dict(_CommandDialog.ACTIONS).get(action_key, action_key)
         cmd = {
             "trigger": trigger,
             "action": action_key,
@@ -280,15 +238,28 @@ class SettingsPanel(QWidget):
 
         cmd = commands[row]
 
-        # 编辑触发词
-        trigger, ok = QInputDialog.getText(
-            self, "编辑指令", "触发词:", QLineEdit.EchoMode.Normal,
-            cmd.get("trigger", "")
+        dlg = _CommandDialog(
+            self,
+            title="编辑指令",
+            trigger=cmd.get("trigger", ""),
+            action=cmd.get("action", ""),
+            custom_text=cmd.get("custom_text", ""),
+            custom_url=cmd.get("custom_url", ""),
         )
-        if not ok or not trigger:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
-        cmd["trigger"] = trigger
+        cmd["trigger"] = dlg.trigger_text()
+        cmd["action"] = dlg.action_key()
+
+        # 清理旧的自定义字段并写入新值
+        cmd.pop("custom_text", None)
+        cmd.pop("custom_url", None)
+        if dlg.custom_text():
+            cmd["custom_text"] = dlg.custom_text()
+        if dlg.custom_url():
+            cmd["custom_url"] = dlg.custom_url()
+
         self._current["voice.commands.custom"] = commands
 
         # 更新列表
@@ -515,3 +486,111 @@ class SettingsPanel(QWidget):
             self._dirty = False
 
         event.accept()
+
+
+class _CommandDialog(QDialog):
+    """指令编辑表单：触发词 + 动作下拉 + 条件字段（网址/文本）同屏显示。"""
+
+    ACTIONS = [
+        ("show_time", "显示时间"),
+        ("show_date", "显示日期"),
+        ("show_greeting", "显示问候语"),
+        ("play_happy", "播放开心动画"),
+        ("play_dance", "播放跳舞动画"),
+        ("show_status", "显示状态"),
+        ("show_dialogue", "显示自定义对话"),
+        ("open_website", "打开网站(需输入网址)"),
+    ]
+
+    def __init__(
+        self, parent=None, title="指令",
+        trigger="", action="", custom_text="", custom_url="",
+    ):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setMinimumWidth(380)
+
+        layout = QVBoxLayout(self)
+
+        layout.addWidget(QLabel("触发词（语音说出的内容）:"))
+        self._trigger_edit = QLineEdit(trigger)
+        self._trigger_edit.setPlaceholderText("例如：打开百度")
+        layout.addWidget(self._trigger_edit)
+
+        layout.addWidget(QLabel("动作:"))
+        self._action_combo = QComboBox()
+        for key, label in self.ACTIONS:
+            self._action_combo.addItem(label, key)
+        layout.addWidget(self._action_combo)
+
+        self._extra_label = QLabel("")
+        layout.addWidget(self._extra_label)
+
+        self._extra_edit = QLineEdit()
+        self._extra_edit.setPlaceholderText("")
+        layout.addWidget(self._extra_edit)
+
+        self._action_combo.currentIndexChanged.connect(self._on_action_changed)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        # 初始选中动作（若有）
+        if action:
+            idx = self._action_combo.findData(action)
+            if idx >= 0:
+                self._action_combo.setCurrentIndex(idx)
+        self._on_action_changed()
+        self._trigger_edit.setFocus()
+
+    def _on_action_changed(self):
+        """根据所选动作显示/隐藏附加输入框。"""
+        key = self._action_combo.currentData()
+        if key == "open_website":
+            self._extra_label.setText("网址:")
+            self._extra_edit.setPlaceholderText("https://example.com")
+            self._extra_edit.setVisible(True)
+            self._extra_label.setVisible(True)
+        elif key == "show_dialogue":
+            self._extra_label.setText("显示的文本:")
+            self._extra_edit.setPlaceholderText("例如：今天也要加油！")
+            self._extra_edit.setVisible(True)
+            self._extra_label.setVisible(True)
+        else:
+            self._extra_label.setVisible(False)
+            self._extra_edit.setVisible(False)
+        self._extra_edit.clear()
+
+    def _on_ok(self):
+        """校验输入：触发词必填，网址/文本按需必填。"""
+        if not self._trigger_edit.text().strip():
+            self._trigger_edit.setFocus()
+            return
+        key = self._action_combo.currentData()
+        if key == "open_website" and not self._extra_edit.text().strip():
+            self._extra_edit.setFocus()
+            return
+        self.accept()
+
+    def trigger_text(self):
+        return self._trigger_edit.text().strip()
+
+    def action_key(self):
+        return self._action_combo.currentData()
+
+    def custom_text(self):
+        key = self._action_combo.currentData()
+        if key == "show_dialogue":
+            return self._extra_edit.text().strip()
+        return ""
+
+    def custom_url(self):
+        key = self._action_combo.currentData()
+        if key == "open_website":
+            return self._extra_edit.text().strip()
+        return ""
