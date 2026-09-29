@@ -256,7 +256,8 @@ class SettingsPanel(QWidget):
 
         # 更新列表
         self._refresh_commands_list()
-        self._dirty = True
+        # 指令操作立即持久化：用户添加后即使直接关闭面板也不丢失
+        self._save_commands_now()
 
     def _edit_command(self):
         """编辑选中的指令。"""
@@ -283,7 +284,7 @@ class SettingsPanel(QWidget):
 
         # 更新列表
         self._refresh_commands_list()
-        self._dirty = True
+        self._save_commands_now()
 
     def _delete_command(self):
         """删除选中的指令。"""
@@ -300,7 +301,7 @@ class SettingsPanel(QWidget):
 
         # 更新列表
         self._refresh_commands_list()
-        self._dirty = True
+        self._save_commands_now()
 
     def _refresh_commands_list(self):
         """刷新指令列表显示。"""
@@ -384,7 +385,6 @@ class SettingsPanel(QWidget):
 
     def _save_settings(self):
         """保存当前临时设置到配置文件。"""
-        # 只保存面板管理的 key
         _PANEL_KEYS = (
             "window.size_scale",
             "window.opacity",
@@ -410,6 +410,26 @@ class SettingsPanel(QWidget):
         self._initial = self._current.copy()
         self._dirty = False
 
+        self.settings_changed.emit()
+        self._event_bus.emit("settings.changed", self._current.copy())
+
+    def _save_commands_now(self):
+        """立即保存指令和唤醒词。
+
+        指令的添加/编辑/删除是用户明确的一次性操作，
+        立即持久化可以避免用户添加后直接关闭面板时
+        closeEvent 因 _dirty =True 静默丢弃改动。
+        """
+        wake_text = self._wake_words_input.text()
+        wake_words = [w.strip() for w in wake_text.split(",") if w.strip()]
+        self._config.set("voice.commands.wake_words", wake_words)
+        self._config.set(
+            "voice.commands.custom",
+            self._current.get("voice.commands.custom", []),
+        )
+        self._config.save()
+        self._initial = self._current.copy()
+        self._dirty = False
         self.settings_changed.emit()
         self._event_bus.emit("settings.changed", self._current.copy())
 
