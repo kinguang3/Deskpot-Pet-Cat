@@ -19,7 +19,7 @@
 
 GBC Nina 是一款轻量级 Windows 桌面宠物，基于 Python + PySide6 构建。她会陪伴你工作、学习，有自己的情绪和行为节奏——安静但好奇，偶尔主动，大部分时间自处。
 
-> **当前状态**: v0.1.0，已实现透明窗口、动画播放、自主行为、鼠标交互、对话气泡、系统托盘、设置面板、语音情绪识别、自定义语音指令等核心功能。
+> **当前状态**: v0.1.1，已实现透明窗口、动画播放、自主行为、鼠标交互、对话气泡、系统托盘、设置面板、语音情绪识别（Hybrid 双 Provider）、自定义语音指令等核心功能。
 
 ---
 
@@ -60,11 +60,11 @@ GBC Nina 的核心目标是提供一个 **有生命感** 的桌面伴侣，而�
 
 - **设置面板** — 可调整窗口大小、透明度、置顶、自动移动、对话开关，以及语音指令管理。
 
-- **语音情绪识别（Hybrid 双 Provider）** — AssemblyAI 负责高质量转录与英语情绪，SenseVoice 负责中文情绪、语种识别与事件检测，两者并行执行并按语言合并结果，支持单 Provider 降级。
+- **语音情绪识别（Hybrid 双 Provider）** — AssemblyAI 负责高质量转录与英语情绪，SenseVoice 负责中文情绪、语种识别与事件检测，两者并行执行并按语言合并结果，支持单 Provider 降级。SenseVoice 推理被串行化保护，连续失败会自动降级，避免崩溃拖垮进程。
 
 - **语音情绪响应** — 用户说话时，Nina 会识别你的情绪并做出反应：你开心她也开心，你难过她会安慰你。
 
-- **自定义语音指令** — 用户可通过设置面板自定义唤醒词和语音指令，支持打开网站、显示时间、播放动画等动作。
+- **自定义语音指令** — 通过设置面板自定义唤醒词和语音指令，支持显示时间/日期、播放动画、显示自定义对话、打开网站等动作。保存后**立即生效，无需重启**。
 
 ---
 
@@ -140,6 +140,24 @@ python main.py
 ```
 
 启动后，Nina 会出现在屏幕底部中间位置，播放 idle 动画。
+
+### 5. 打包发布（PyInstaller）
+
+```bash
+# 必须激活虚拟环境并安装 PyInstaller
+.\.venv\Scripts\Activate.ps1
+pip install pyinstaller
+
+# 打包为单目录版（-D 单目录 / -w 无控制台 / -i 图标）
+pyinstaller -D -w -i app.ico -n "GBC Nina v0.1.1" `
+    --add-data "assets;assets" `
+    --add-data "config;config" `
+    --add-data "models;models" `
+    --add-binary "bin;bin" `
+    main.py
+```
+
+> **注意**: 打包产物位于 `dist\GBC Nina v0.1.1\`。由于 `--add-data` 在 PyInstaller 6.x 的 `--onedir` 模式会放入 `_internal\` 子目录，需要把 `_internal\` 下的 `assets`、`bin`、`config`、`models` 复制到顶层目录，程序才能通过相对路径找到资源。release 附件即按此方式整理后压缩。
 
 ---
 
@@ -291,11 +309,11 @@ GBC-Nina/
 │   └── cat_sleep1-2.png           # 睡觉动画 (2帧)
 │
 ├── bin/                           # 语音推理引擎
-│   └── sense-voice-main.exe       # SenseVoice 本地推理
+│   ├── sense-voice-main.exe       # SenseVoice 本地推理
+│   └── libdl.dll                  # SenseVoice 运行时动态库
 │
 ├── models/                        # 语音模型
-│   ├── sense-voice-small-q8_0.gguf # SenseVoice 模型
-│   └── fsmn-vad.gguf              # VAD 模型
+│   └── sense-voice-small-q8_0.gguf # SenseVoice 小型量化模型
 │
 └── src/                           # 源代码
     ├── __init__.py
@@ -483,6 +501,24 @@ python main.py
 2. 在"语音指令"区域点击"添加"
 3. 输入触发词，选择动作类型
 4. 点击"保存"
+
+**提示**: 保存后指令**立即生效**，无需重启应用。新增指令会与默认 6 条指令合并保存，不会覆盖它们。
+
+</details>
+
+<details>
+<summary><b>Q5: 添加的指令在设置面板里看不到？</b></summary>
+
+请将应用升级到 **v0.1.1**。早期版本存在 bug：设置面板读取配置时使用了错误的键名，导致指令列表永远显示为空、且保存会覆盖默认指令。v0.1.1 已修复，并增加了"未保存则还原"的能力。
+
+</details>
+
+<details>
+<summary><b>Q6: SenseVoice 崩溃 / 语音模块无响应？</b></summary>
+
+**说明**: 本地 SenseVoice 推理进程偶发崩溃（Windows 异常退出 0xC0000005）。
+
+**解决方案**: v0.1.1 已对 SenseVoice 做串行化保护，连续失败 3 次会自动禁用该 Provider 并降级到 AssemblyAI，不影响主程序运行。
 
 </details>
 
