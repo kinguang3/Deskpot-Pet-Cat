@@ -265,11 +265,25 @@ class CommandManager:
     # ─── 完整处理流程 ───
 
     def process_text(self, text: str) -> Optional[str]:
-        """处理识别文本，返回动作类型或 None。"""
+        """处理识别文本，返回动作类型或 None。
+
+        流程：
+        1. 先尝试直接匹配指令（无需唤醒词，方便快速触发）；
+        2. 有唤醒词时进入/刷新聆听模式，用于随后的连续指令；
+        3. 聆听模式下匹配后续指令，超时自动退出聆听。
+        """
         if not text:
             return None
 
-        # 检查唤醒词
+        # 1) 直接匹配指令（唤醒词不是必需条件）
+        cmd = self.match_command(text)
+        if cmd:
+            action = self._build_and_execute(cmd, text)
+            # 说了一个指令，顺带刷新聆听窗口，便于连续下达
+            self.set_listening(True)
+            return action
+
+        # 2) 检查唤醒词
         if self.check_wake_word(text):
             self.set_listening(True)
             # 移除唤醒词，提取剩余部分作为指令
@@ -277,19 +291,11 @@ class CommandManager:
             if text_after_wake:
                 cmd = self.match_command(text_after_wake)
                 if cmd:
-                    action = cmd.get("action", "")
-                    context = {"text": text_after_wake}
-                    # 如果是 open_website，传递 URL
-                    if action == "open_website":
-                        context["url"] = cmd.get("custom_url", "")
-                    # 如果是 show_dialogue，传递自定义文本
-                    elif action == "show_dialogue":
-                        context["text"] = cmd.get("custom_text", text_after_wake)
-                    self.execute_action(action, context)
+                    action = self._build_and_execute(cmd, text_after_wake)
                     return action
             return "wake_detected"
 
-        # 如果在聆听模式，检查指令
+        # 3) 聆听模式：匹配后续指令
         if self._is_listening:
             if self.is_wake_timeout():
                 self.set_listening(False)
@@ -297,19 +303,24 @@ class CommandManager:
 
             cmd = self.match_command(text)
             if cmd:
-                action = cmd.get("action", "")
-                context = {"text": text}
-                # 如果是 open_website，传递 URL
-                if action == "open_website":
-                    context["url"] = cmd.get("custom_url", "")
-                # 如果是 show_dialogue，传递自定义文本
-                elif action == "show_dialogue":
-                    context["text"] = cmd.get("custom_text", text)
-                self.execute_action(action, context)
+                action = self._build_and_execute(cmd, text)
                 self.set_listening(False)
                 return action
 
         return None
+
+    def _build_and_execute(self, cmd: dict, said: str) -> str:
+        """按指令动作构造上下文并执行，返回动作名。"""
+        action = cmd.get("action", "")
+        context = {"text": said}
+        # 如果是 open_website，传递 URL
+        if action == "open_website":
+            context["url"] = cmd.get("custom_url", "")
+        # 如果是 show_dialogue，传递自定义文本
+        elif action == "show_dialogue":
+            context["text"] = cmd.get("custom_text", said)
+        self.execute_action(action, context)
+        return action
 
     def _remove_wake_word(self, text: str) -> str:
         """从文本中移除唤醒词。"""

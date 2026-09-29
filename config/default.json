@@ -63,7 +63,7 @@
     "segment_silence_rms_threshold": 400,
     "assemblyai": {
       "api_key": "",
-      "language": "en",
+      "language": "zh",
       "timeout": 60
     },
     "sensevoice": {

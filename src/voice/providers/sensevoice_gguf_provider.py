@@ -130,6 +130,9 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         self._current_process: subprocess.Popen | None = None
         self._infer_lock = threading.Lock()
         # 连续失败计数，达到阈值后禁用该 Provider
+        # 注意：只有识别出实际语音内容才重置；静音段正常退出不重置，
+        # 否则「语音段崩溃 -> 静音段成功」会永远让计数停在 1/3，
+        # 永远无法触发自动禁用，崩溃会无限重演
         self._consecutive_failures = 0
 
         self._ready = self._check_ready()
@@ -184,8 +187,17 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             parsed = self._parse_output(raw_output)
 
             if success:
-                # 成功一次就重置失败计数（含静音段等无输出但正常退出的情况）
-                self._consecutive_failures = 0
+                # 只有识别出实际语音内容才算"成功"。
+                # 静音段正常退出（无输出）不重置失败计数，
+                # 否则崩溃与静音交替会永远停在 1/3，永远无法触发自动禁用。
+                if (parsed.get("text") or "").strip():
+                    self._consecutive_failures = 0
+                else:
+                    logger.debug(
+                        "SenseVoice succeeded but no speech output "
+                        "(counter stays %d)",
+                        self._consecutive_failures,
+                    )
             else:
                 self._on_inference_failure()
 
