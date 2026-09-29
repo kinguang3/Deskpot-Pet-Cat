@@ -210,16 +210,24 @@ class SettingsPanel(QWidget):
             ("play_dance", "播放跳舞动画"),
             ("show_status", "显示状态"),
             ("show_dialogue", "显示自定义对话"),
-            ("open_website", "打开网站"),
+            ("open_website", "打开网站(需输入网址)"),
         ]
 
         action, ok = QInputDialog.getItem(
-            self, "选择动作", "动作:", [f"{a[0]} - {a[1]}" for a in actions], 0, False
+            self, "选择动作", "动作:", [f"{a[1]}" for a in actions], 0, False
         )
         if not ok:
             return
 
-        action_key = action.split(" - ")[0]
+        # 根据显示名找到动作 key（防止用户对应错）
+        action_key = None
+        for k, label in actions:
+            if label == action:
+                action_key = k
+                break
+        if action_key is None:
+            logger.warning("Unknown action selected: %s", action)
+            return
 
         # 如果是 show_dialogue，获取自定义文本
         custom_text = ""
@@ -242,10 +250,11 @@ class SettingsPanel(QWidget):
 
         # 添加到配置
         commands = self._current.get("voice.commands.custom", [])
+        action_label = dict(actions).get(action_key, action_key)
         cmd = {
             "trigger": trigger,
             "action": action_key,
-            "description": custom_text or custom_url or action.split(" - ")[1],
+            "description": custom_text or custom_url or action_label,
         }
         if custom_text:
             cmd["custom_text"] = custom_text
