@@ -166,6 +166,13 @@ class CommandManager:
         else:
             logger.warning("No URL provided for open_website action")
 
+    def handle_show_dialogue(self, context: dict):
+        """显示自定义对话文本。"""
+        text = context.get("text", "")
+        if text:
+            self._event_bus.emit("command.show_dialogue", {"text": text})
+            logger.info("Showing custom dialogue: %s", text)
+
     def register_builtin_actions(self):
         """注册所有内置动作处理器。"""
         self.register_action("show_time", self.handle_show_time)
@@ -175,8 +182,26 @@ class CommandManager:
         self.register_action("play_dance", self.handle_play_dance)
         self.register_action("show_status", self.handle_show_status)
         self.register_action("open_website", self.handle_open_website)
+        self.register_action("show_dialogue", self.handle_show_dialogue)
 
     # ─── 配置管理 ───
+
+    def reload(self):
+        """重新从配置加载唤醒词与指令（设置面板保存后调用）。"""
+        self._wake_words: list[str] = self._config.get(
+            "voice.commands.wake_words", ["hey nina", "小猫", "nina"]
+        )
+        self._wake_timeout_ms: int = self._config.get(
+            "voice.commands.wake_timeout_ms", 5000
+        )
+        self._commands: list[dict] = self._config.get(
+            "voice.commands.custom", []
+        )
+        logger.info(
+            "CommandManager reloaded (wake_words=%s, commands=%d)",
+            self._wake_words,
+            len(self._commands),
+        )
 
     def get_wake_words(self) -> list[str]:
         """获取唤醒词列表。"""

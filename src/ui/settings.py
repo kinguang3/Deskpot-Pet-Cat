@@ -272,7 +272,8 @@ class SettingsPanel(QWidget):
 
         # 编辑触发词
         trigger, ok = QInputDialog.getText(
-            self, "编辑指令", "触发词:", QLineEdit.EchoMode.Normal, cmd["trigger"]
+            self, "编辑指令", "触发词:", QLineEdit.EchoMode.Normal,
+            cmd.get("trigger", "")
         )
         if not ok or not trigger:
             return
@@ -319,43 +320,67 @@ class SettingsPanel(QWidget):
 
     def _apply_preview(self, key, value):
         """更新临时配置，发出预览信号，"""
+        if self._updating:
+            return
         self._current[key] = value
         self._dirty = True
         self.preview_changed.emit(self._current.copy())
 
+    @staticmethod
+    def _flatten_dict(prefix: str, data: dict) -> dict:
+        """将嵌套 dict 展开为点分路径的扁平 dict。
+
+        例如 {"window": {"opacity": 0.95}} -> {"window.opacity": 0.95}
+        """
+        result = {}
+        for key, value in data.items():
+            new_key = f"{prefix}.{key}" if prefix else key
+            if isinstance(value, dict):
+                result.update(SettingsPanel._flatten_dict(new_key, value))
+            else:
+                result[new_key] = value
+        return result
+
     def _load_settings(self):
         """从配置文件加载，初始化临时和初始状态"""
-        # 读取当前配置
-        self._current = self._config.get_all().copy()
+        # get_all() 返回嵌套 dict，这里展开为点分路径扁平 dict，
+        # 与 window.size_scale / voice.commands.custom 等点分键保持一致
+        self._current = self._flatten_dict("", self._config.get_all())
         self._initial = self._current.copy()
 
-        # 更新UI控件
-        self._size_slider.setValue(
-            int(self._current.get("window.size_scale", 1.0) * 100)
-        )
-        self._opacity_slider.setValue(
-            int(self._current.get("window.opacity", 0.95) * 100)
-        )
-        self._topmost_check.setChecked(
-            self._current.get("window.always_on_top", True)
-        )
-        self._auto_move_check.setChecked(
-            self._current.get("behavior.auto_move", True)
-        )
-        self._dialogue_check.setChecked(
-            self._current.get("behavior.dialogue_enabled", True)
-        )
+        self._updating = True
+        try:
+            # 更新UI控件
+            self._size_slider.setValue(
+                int(self._current.get("window.size_scale", 1.0) * 100)
+            )
+            self._opacity_slider.setValue(
+                int(self._current.get("window.opacity", 0.95) * 100)
+            )
+            self._topmost_check.setChecked(
+                self._current.get("window.always_on_top", True)
+            )
+            self._auto_move_check.setChecked(
+                self._current.get("behavior.auto_move", True)
+            )
+            self._dialogue_check.setChecked(
+                self._current.get("behavior.dialogue_enabled", True)
+            )
 
-        # 加载唤醒词
-        wake_words = self._current.get("voice.commands.wake_words", ["hey nina", "小猫", "nina"])
-        self._wake_words_input.setText(", ".join(wake_words))
+            # 加载唤醒词
+            wake_words = self._current.get(
+                "voice.commands.wake_words", ["hey nina", "小猫", "nina"]
+            )
+            self._wake_words_input.setText(", ".join(wake_words))
 
-        # 加载指令列表
-        self._refresh_commands_list()
+            # 加载指令列表
+            self._refresh_commands_list()
 
-        # 更新标签显示
-        self._size_label.setText(f"{self._size_slider.value()}%")
-        self._opacity_label.setText(f"{self._opacity_slider.value()}%")
+            # 更新标签显示
+            self._size_label.setText(f"{self._size_slider.value()}%")
+            self._opacity_label.setText(f"{self._opacity_slider.value()}%")
+        finally:
+            self._updating = False
 
     def _save_settings(self):
         """保存当前临时设置到配置文件。"""
@@ -427,6 +452,7 @@ class SettingsPanel(QWidget):
         if self._dirty:
             # 恢复到打开时的状态
             self._current = self._initial.copy()
+            self._updating = True
             # 更新UI控件以反映恢复值
             self._size_slider.setValue(
                 int(self._current.get("window.size_scale", 1.0) * 100)
@@ -443,8 +469,18 @@ class SettingsPanel(QWidget):
             self._dialogue_check.setChecked(
                 self._current.get("behavior.dialogue_enabled", True)
             )
+            self._wake_words_input.setText(
+                ", ".join(
+                    self._current.get(
+                        "voice.commands.wake_words",
+                        ["hey nina", "小猫", "nina"],
+                    )
+                )
+            )
+            self._refresh_commands_list()
             self._size_label.setText(f"{self._size_slider.value()}%")
             self._opacity_label.setText(f"{self._opacity_slider.value()}%")
+            self._updating = False
             # 通知主窗口恢复
             self.preview_changed.emit(self._current.copy())
             self._dirty = False

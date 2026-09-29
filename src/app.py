@@ -159,6 +159,9 @@ class App(QObject):
         # 语音情绪事件
         self._event_bus.on("voice.emotion_detected", self._on_voice_emotion)
 
+        # 设置变更（保存后热重载语音指令）
+        self._event_bus.on("settings.changed", self._on_settings_changed)
+
         # 语音指令事件
         self._event_bus.on("voice.command_detected", self._on_voice_command)
         self._event_bus.on("command.show_dialogue", self._on_command_show_dialogue)
@@ -415,6 +418,10 @@ class App(QObject):
 
         logger.info("Voice command detected: action=%s, text=%s", action, text)
 
+    def _on_settings_changed(self, data: dict):
+        """设置保存后热重载语音指令。"""
+        self._voice_manager.get_command_manager().reload()
+
     def _on_command_show_dialogue(self, data: dict):
         """显示指令对话。"""
         text = data.get("text", "")
@@ -424,8 +431,19 @@ class App(QObject):
     def _on_command_play_animation(self, data: dict):
         """播放指令动画。"""
         animation = data.get("animation", "")
-        if animation:
-            self._anim_manager.play(animation)
+        if not animation:
+            return
+
+        # happy/dance 无独立帧资源，映射到现有状态与动画
+        if animation == "happy":
+            self._state_machine.transition_to("happy")
+            return
+        if animation == "dance":
+            logger.warning("No dance animation sprite, fallback to happy state")
+            self._state_machine.transition_to("happy")
+            return
+
+        self._anim_manager.play(animation)
 
     def _on_command_show_status(self, data: dict):
         """显示状态信息。"""
