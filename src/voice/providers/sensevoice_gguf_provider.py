@@ -325,6 +325,7 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             str(self._n_threads),
             "-itn",  # 启用文本规范化
             "--use-prefix",  # 保留语言/情绪/事件标签（对应旧版 --keep-tags）
+            "--no-gpu",  # 纯 CPU 推理，避免 GPU 初始化导致 0xC0000005 崩溃
         ]
 
         logger.debug("Running SenseVoice: %s", " ".join(cmd))
