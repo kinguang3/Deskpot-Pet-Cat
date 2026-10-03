@@ -385,7 +385,12 @@ class SettingsPanel(QWidget):
         commands = self._current.get("voice.commands.custom", [])
         self._config.set("voice.commands.custom", commands)
 
-        self._config.save()
+        if not self._config.save():
+            # 落盘失败时保持 _dirty=True，让用户关闭面板时仍能回滚/重试，
+            # 否则内存标记为「已保存」但磁盘仍是旧值，状态不一致
+            self._dirty = True
+            logger.error("保存设置失败，保留未保存状态以便重试")
+            return
 
         self._initial = self._current.copy()
         self._dirty = False
@@ -407,7 +412,14 @@ class SettingsPanel(QWidget):
             "voice.commands.custom",
             self._current.get("voice.commands.custom", []),
         )
-        self._config.save()
+        if not self._config.save():
+            # 必须显式置脏：指令的添加/编辑/删除走立即保存路径，
+            # 进入时 _dirty 可能仍是 False。若不置脏，关闭面板时
+            # closeEvent 会认为「无未保存改动」而放行，
+            # 结果 ConfigManager 内存里是新指令、磁盘上却是旧的。
+            self._dirty = True
+            logger.error("保存指令失败，保留未保存状态以便重试")
+            return
         self._initial = self._current.copy()
         self._dirty = False
         self.settings_changed.emit()

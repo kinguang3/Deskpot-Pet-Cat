@@ -18,7 +18,6 @@
 
 import atexit
 import glob
-import inspect
 import logging
 import os
 import sys
@@ -40,65 +39,75 @@ _log_dir = None
 _log_prefix = None
 _max_files = None
 
+# 本模块名，供 ClassnameFilter 回溯调用栈时跳过自身辅助帧
+_THIS_MODULE = __name__
+
 
 class ClassnameFilter(Filter):
     """
     为日志记录添加调用类的名称（classname）。
     同时修正 funcName 和 lineno（避免被包装函数干扰）。
+
+    性能：此处属于高频路径——音频采集回调线程、每个 segment、每条
+    情绪事件都会打日志，因此必须避免昂贵的栈反射。原实现对每条记录
+    调用 ``inspect.stack()``，它会为整条调用链读取源码行并构造 FrameInfo
+    对象（比 ``sys._getframe`` 慢一到两个数量级），在 PortAudio 实时回调
+    线程上极易造成缓冲溢出/音频丢帧。
+
+    现改为只用 ``sys._getframe`` 逐帧回溯跳过 logging 内部帧：不读任何
+    源码、不构造 FrameInfo，代价与栈深线性且常数极小。
     """
 
     def filter(self, record: LogRecord) -> bool:
         if hasattr(record, "_caller_filled"):
             return True
 
-        stack = inspect.stack()
-        for idx in range(3, len(stack)):
-            frame_info = stack[idx]
-            frame = frame_info.frame
-
-            # 跳过 logging 内部对象和自身模块的方法
-            if "self" in frame.f_locals:
-                obj = frame.f_locals["self"]
-                if isinstance(
-                    obj,
-                    (
-                        logging.Logger,
-                        logging.Handler,
-                        logging.Filter,
-                        logging.Formatter,
-                    ),
-                ):
-                    continue
-
-            # 跳过本模块中的辅助函数
-            if frame_info.function in (
-                "debug",
-                "info",
-                "warning",
-                "error",
-                "critical",
-            ) and frame_info.filename.replace("\\", "/").endswith("logger.py"):
-                continue
-
-            # 提取类名
-            if "self" in frame.f_locals:
-                classname = frame.f_locals["self"].__class__.__name__
+        frame = self._find_caller_frame()
+        if frame is not None:
+            record.funcName = frame.f_code.co_name
+            record.lineno = frame.f_lineno
+            obj = frame.f_locals.get("self")
+            if obj is not None:
+                classname = type(obj).__name__
             else:
                 # 普通函数（无 self）则使用模块名
                 classname = frame.f_globals.get("__name__", record.module)
+        else:
+            # 保底：无法定位调用者时只补齐 classname 字段，
+            # 保留 logging 自身给出的 funcName/lineno
+            classname = ""
 
-            record.classname = classname
-            record.classname_sep = "." if classname else ""
-            record.funcName = frame_info.function
-            record.lineno = frame_info.lineno
-            record._caller_filled = True
-            return True
-
-        # 保底
-        record.classname = ""
-        record.classname_sep = ""
+        record.classname = classname
+        record.classname_sep = "." if classname else ""
         record._caller_filled = True
         return True
+
+    @staticmethod
+    def _find_caller_frame():
+        """回溯调用栈，跳过 logging 包内部帧与本模块自身的辅助帧
+
+        返回第一个「业务代码」帧，找不到时返回 None。
+
+        用模块名而不是文件路径判断是否属于 logging：logging.handlers
+        （RotatingFileHandler / QueueHandler 等）位于独立文件，仅比较
+        logging._srcfile 会把它们误判成业务代码。
+        """
+        # 跳过自身这一层
+        try:
+            frame = sys._getframe(1)
+        except ValueError:
+            return None
+
+        while frame is not None:
+            module = frame.f_globals.get("__name__", "")
+            if (
+                module != _THIS_MODULE
+                and module != "logging"
+                and not module.startswith("logging.")
+            ):
+                return frame
+            frame = frame.f_back
+        return None
 
 
 class LevelFilter(Filter):

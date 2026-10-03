@@ -172,8 +172,14 @@ class VoiceManager(QObject):
 
     def resume(self):
         if self._running and self._capture and not self._capture.is_running:
-            self._capture.start()
-            logger.debug("VoiceManager resumed")
+            if self._capture.start():
+                logger.debug("VoiceManager resumed")
+            else:
+                # 不能无条件报 resumed：麦克风被占用/设备消失时采集会失败，
+                # 宠物仍显示运行中但实际收不到任何音频
+                logger.error("麦克风恢复采集失败，语音输入已中断")
+                self.state_changed.emit(False)
+                self._running = False
 
     def is_running(self) -> bool:
         return self._running

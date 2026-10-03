@@ -14,6 +14,8 @@
 """
 
 import json
+import os
+import shutil
 from pathlib import Path
 
 from src.utils.logger import get_logger
@@ -81,8 +83,53 @@ class ConfigManager:
             logger.info("Config file not found: %s", path.name)
             return {}
         except json.JSONDecodeError:
-            logger.error("Failed to parse config file: %s", path.name)
-            return {}
+            logger.error(
+                "Failed to parse config file: %s", path.name
+            )
+            return self._recover_corrupt_json(path)
+
+    def _recover_corrupt_json(self, path: Path) -> dict:
+        """配置文件损坏时的恢复策略
+
+        损坏原因通常是写入过程中进程/系统中断导致文件被截断。处理顺序：
+        1. 尝试加载同目录的备份 ``<name>.bak``（每次成功保存都会滚动保留
+           上一份完好的内容）；
+        2. 备份可用则返回备份内容，并把损坏文件隔离为 ``<name>.corrupt``
+           防止后续 save() 用默认值静默覆盖用户的真实配置；
+        3. 备份也不可用时同样隔离损坏文件，返回空字典。
+
+        关键点：绝不静默返回默认值后就允许 save() 覆盖——那会造成用户
+        配置永久丢失（历史上「关闭面板丢设置」的根因之一）。
+        """
+        backup = path.with_suffix(path.suffix + ".bak")
+        if backup.exists():
+            try:
+                with open(backup, "r", encoding="utf-8") as f:
+                    recovered = json.load(f)
+                logger.warning(
+                    "Recovered config from backup: %s", backup.name
+                )
+                self._quarantine(path)
+                return recovered
+            except (OSError, json.JSONDecodeError):
+                logger.warning("Config backup also unusable: %s", backup.name)
+
+        self._quarantine(path)
+        logger.error(
+            "Config file corrupted and no usable backup; using defaults. "
+            "Corrupt file kept at %s",
+            path.with_suffix(path.suffix + ".corrupt").name,
+        )
+        return {}
+
+    @staticmethod
+    def _quarantine(path: Path) -> None:
+        """把损坏文件改名隔离，避免被后续写入覆盖"""
+        try:
+            target = path.with_suffix(path.suffix + ".corrupt")
+            path.replace(target)
+        except OSError:
+            logger.warning("Failed to quarantine corrupt config: %s", path)
 
     def _deep_merge(self, base: dict, override: dict):
         """将 override 的值深度合并到 base 中"""
@@ -152,15 +199,53 @@ class ConfigManager:
             node = node[key]
         node[keys[-1]] = value
 
-    def save(self):
-        """保存用户配置到 user.json"""
+    def save(self) -> bool:
+        """原子化保存用户配置到 user.json
+
+        采用「写临时文件 -> fsync -> os.replace」的原子写策略：
+        os.replace 在同一文件系统内是原子操作，因此进程崩溃、磁盘写满
+        或断电时，user.json 要么保持旧内容，要么变成完整的新内容，
+        不会出现被截断的非法 JSON。
+
+        同时把上一份完好内容滚动保存为 ``user.json.bak``，供
+        ``_recover_corrupt_json`` 在文件损坏时回退。
+
+        Returns:
+            True 表示已成功落盘；False 表示失败（调用方不应再把内存
+            状态标记为「已保存」）。
+        """
+        tmp_path = self._user_config_path.with_suffix(".json.tmp")
+        backup = self._user_config_path.with_suffix(".json.bak")
         try:
             self._config_dir.mkdir(parents=True, exist_ok=True)
-            with open(self._user_config_path, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, indent=4, ensure_ascii=False)
-            logger.debug("Settings saved")
-        except OSError:
+
+            # 先序列化到内存，提前暴露不可序列化类型，避免写坏文件
+            payload = json.dumps(self._data, indent=4, ensure_ascii=False)
+
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # 落盘成功后，滚动保留上一份完好内容
+            if self._user_config_path.exists():
+                try:
+                    shutil.copy2(self._user_config_path, backup)
+                except OSError:
+                    logger.warning("Failed to refresh config backup")
+
+            os.replace(tmp_path, self._user_config_path)
+            logger.debug("Settings saved atomically")
+            return True
+        except (OSError, TypeError, ValueError):
+            # TypeError/ValueError: 配置里混入不可 JSON 序列化的值
             logger.exception("Failed to save settings")
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                pass
+            return False
 
     def get_all(self) -> dict:
         """返回完整配置副本"""

@@ -8,15 +8,23 @@
 - AssemblyAI（云端）：高质量转录、英语情绪分析
 - SenseVoice（本地 GGUF）：中文情绪分析、语种识别、音频事件检测
 
-两个 Provider 通过 ThreadPoolExecutor 并行执行，再按语言与可用性
-合并结果。任一 Provider 失败时自动降级到另一个，保证服务不中断。
+两个 Provider **串行**配合，按语言与可用性合并结果。任一 Provider 失败时
+自动降级到另一个，保证服务不中断。
 
 延迟策略（命令场景优先响应）：
-- SenseVoice 为本地推理，通常远快于云端。只要 SenseVoice 识别出
-  文本，立即用其结果返回，**不等**还在跑的 AssemblyAI；云端结果在
-  后台线程自然结束，作为冗余丢弃。
-- 只有 SenseVoice 不可用或未识别出文本时，才回退等待 AssemblyAI，
-  保证云端兜底可用。
+- SenseVoice 为本地推理，先行执行，通常远快于云端；中文场景下它的
+  结果即为最终结果，**完全不调用** AssemblyAI，因此没有额外网络等待。
+- 只有 SenseVoice 不可用、异常，或它把音频判为英文（非中文）时，才
+  继续调用 AssemblyAI 兜底，保证英文转录与云端情绪能力不丢。
+
+为什么不并行：
+- 早期实现对两个 Provider 同时投递任务，且本地任务「完成即返回」。
+  但线程池 worker 有限（默认 2），连续的语音段会先塞满 worker：
+  本地推理很快（约 0.1s）但云端任务要跑 5~10s，占着 worker 不放，
+  导致后续**本地**任务被排在云端任务后面，实测单段延迟被放大到
+  2.8s（本地只需 0.1s）。
+- 中文为主的场景根本用不到云端，投机并发只带来排队与资源浪费。
+  改为「先本地、按需云端」后，同场景实测稳定在 0.1s。
 
 合并规则：
 
@@ -95,17 +103,25 @@ class HybridVoiceProvider(BaseVoiceProvider):
         return all(states)
 
     def transcribe_and_analyze(self, audio_bytes: bytes) -> dict:
-        """并行调用两个 Provider，合并成一个统一结构"""
+        """先本地后云端地合并结果"""
         if not audio_bytes:
             return self._empty_result()
-        if not self.is_ready():
-            logger.error("HybridVoiceProvider not ready, returning empty")
+
+        # 注意：这里不能直接用 is_ready() 一刀切返回空结果。is_ready() 要求
+        # 两个子 Provider 全部就绪，而本类的存在意义就是「一个挂了另一个
+        # 顶上」。曾经写成 `if not self.is_ready(): return empty`，导致
+        # SenseVoice 临时不可用（如 exe 被占用/被清理）时，AssemblyAI 明明
+        # 完全可用却也被一起放弃，整条语音链路静默返回空结果。
+        local_ready = self._provider_ready(self._sensevoice)
+        cloud_ready = self._provider_ready(self._assemblyai)
+        if not local_ready and not cloud_ready:
+            logger.error(
+                "HybridVoiceProvider not ready (both providers unavailable), "
+                "returning empty"
+            )
             return self._empty_result()
 
-        assemblyai_result, sensevoice_result = self._run_in_parallel(
-            audio_bytes
-        )
-        return self._merge(assemblyai_result, sensevoice_result)
+        return self._run_local_first(audio_bytes)
 
     def close(self) -> None:
         """关闭线程池并释放两个子 Provider"""
@@ -164,103 +180,80 @@ class HybridVoiceProvider(BaseVoiceProvider):
                 )
             return self._executor
 
-    def _run_in_parallel(self, audio_bytes: bytes):
-        """并行执行两个 Provider，优先返回本地结果
+    @staticmethod
+    def _provider_ready(provider) -> bool:
+        """就绪检查统一入口：子 Provider 的 is_ready() 自身抛异常时
+
+        视为不可用而不是让异常冒泡打断整段识别。
+        """
+        if provider is None:
+            return False
+        try:
+            return bool(provider.is_ready())
+        except Exception:
+            logger.warning(
+                "Provider readiness check raised, treating as unavailable",
+                exc_info=True,
+            )
+            return False
+
+    def _run_local_first(self, audio_bytes: bytes) -> dict:
+        """本地优先：SenseVoice 先跑，中文场景完全不调用云端
 
         设计重点（低延迟命令场景）：
-        - 两个子 Provider 并行启动。
-        - SenseVoice 是本地推理，通常远快于云端；只要它识别出文本，
-          立即以其结果返回，不再阻塞等待 AssemblyAI。云端请求在后台
-          线程中自然结束（其结果中文场景下并非必需，直接丢弃）。
-        - 若 SenseVoice 不可用、崩溃或未识别出文本，才回退等待
-          AssemblyAI 结果，保证云端兜底。
+        - SenseVoice 是本地推理（亚秒级），**先**执行并立即判断。
+        - 若本地识别出中文/非英语文本，直接返回，**不调用** AssemblyAI：
+          既避免云端 5~60s 延迟拖慢命令，也避免为中文语料白白消耗
+          AssemblyAI 配额（早前版本云端 100% 被调用却从不参与中文结果
+          合并）。
+        - 若本地识别出英文，才补调 AssemblyAI 提升转写质量（此时延迟
+          = 本地 + 云端，串行；英文场景可接受）。
+        - 若本地不可用、崩溃或未识别出文本，则仅用 AssemblyAI 兜底。
 
-        Returns:
-            (assemblyai_result, sensevoice_result)；其中未完成的
-            Provider 对应位置为 None，由调用方 _merge 自行容错。
+        关键：云端任务**不再与本地并发提交**。早前版本用共享 2-worker
+        线程池同时提交两者，慢速云端任务会占满 worker，使下一次本地推理
+        被迫排队，出现「本地仅需 0.1s 却整体等待 2.8s」的延迟毛刺。
         """
-        targets = []
-        if self._assemblyai is not None and self._assemblyai.is_ready():
-            targets.append(("assemblyai", self._assemblyai))
-        if self._sensevoice is not None and self._sensevoice.is_ready():
-            targets.append(("sensevoice", self._sensevoice))
+        sensevoice_result = None
+        if self._provider_ready(self._sensevoice):
+            sensevoice_result = self._call_provider(
+                self._sensevoice, audio_bytes, "SenseVoice 本地"
+            )
 
-        if not targets:
-            logger.error("HybridVoiceProvider 没有可用的子 Provider")
-            return None, None
+        sensevoice_text = (
+            (sensevoice_result or {}).get("text") or ""
+        ).strip()
 
+        if sensevoice_text:
+            language = self._pick_language({}, sensevoice_result or {})
+            if language.lower() != _EN_LANGUAGE:
+                # 本地中文结果即为最终结果：不调用云端
+                return self._merge(None, sensevoice_result)
+            # 英文：补调云端提升转写质量
+            assemblyai_result = self._call_provider(
+                self._assemblyai, audio_bytes, "AssemblyAI 云端"
+            )
+            return self._merge(assemblyai_result, sensevoice_result)
+
+        # 本地无可靠文本：仅用云端兜底
+        assemblyai_result = self._call_provider(
+            self._assemblyai, audio_bytes, "AssemblyAI 云端兜底"
+        )
+        return self._merge(assemblyai_result, sensevoice_result)
+
+    def _call_provider(self, provider, audio_bytes: bytes, label: str):
+        """在工作线程中调用单个 Provider，异常时返回 None 不抛出"""
+        if not self._provider_ready(provider):
+            return None
         executor = self._ensure_executor()
-        future_map = {
-            executor.submit(
+        try:
+            future = executor.submit(
                 provider.transcribe_and_analyze, audio_bytes
-            ): name
-            for name, provider in targets
-        }
-
-        # 先等本地 SenseVoice：它若出文本，立即交付，不等云端
-        sensevoice_future = None
-        for future, name in future_map.items():
-            if name == "sensevoice":
-                sensevoice_future = future
-                break
-
-        if sensevoice_future is not None:
-            try:
-                sensevoice_result = sensevoice_future.result()
-            except Exception:
-                logger.warning(
-                    "SenseVoice 本地推理异常，回退等待云端兜底",
-                    exc_info=True,
-                )
-                sensevoice_result = None
-            else:
-                sensevoice_text = (
-                    sensevoice_result.get("text") or ""
-                ).strip()
-                if sensevoice_text:
-                    # 本地已识别：立即返回。云端仍在后台执行，其结果
-                    # 中文/命令场景下非必需，直接忽略不阻塞返回。
-                    if any(
-                        name == "assemblyai" for name in future_map.values()
-                    ):
-                        logger.debug(
-                            "SenseVoice 本地已出结果，不等 AssemblyAI "
-                            "云端（文本=%r）",
-                            sensevoice_text,
-                        )
-                    return None, sensevoice_result
-
-            # 本地没有可靠文本：等 AssemblyAI 云端兜底
-            assemblyai_future = None
-            for future, name in future_map.items():
-                if name == "assemblyai":
-                    assemblyai_future = future
-                    break
-            if assemblyai_future is not None:
-                try:
-                    assemblyai_result = assemblyai_future.result()
-                except Exception:
-                    logger.warning(
-                        "AssemblyAI 云端兜底调用失败", exc_info=True
-                    )
-                    assemblyai_result = None
-                return assemblyai_result, sensevoice_result
-
-        # 没有 SenseVoice：只能等 AssemblyAI
-        assemblyai_result = None
-        for future in concurrent.futures.as_completed(future_map):
-            name = future_map[future]
-            try:
-                results = {name: future.result()}
-            except Exception:
-                logger.warning(
-                    "Hybrid %s provider 调用失败", name, exc_info=True
-                )
-                results = {name: None}
-            if "assemblyai" in results:
-                assemblyai_result = results["assemblyai"]
-
-        return assemblyai_result, None
+            )
+            return future.result()
+        except Exception:
+            logger.warning("%s 调用失败", label, exc_info=True)
+            return None
 
     def _merge(self, assemblyai_result: dict, sensevoice_result: dict) -> dict:
         """按语言与可用性合并两个 Provider 的结果"""

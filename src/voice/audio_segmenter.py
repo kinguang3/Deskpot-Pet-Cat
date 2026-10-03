@@ -66,7 +66,7 @@ class AudioSegmenter:
 
         self._buffer.extend(pcm_bytes)
 
-        block_ms = self._block_duration_ms(pcm_bytes)
+        block_ms = self._block_duration_ms(len(pcm_bytes))
         is_silent = self._is_silent(pcm_bytes)
 
         if is_silent:
@@ -124,12 +124,18 @@ class AudioSegmenter:
         self._silence_run_ms = 0.0
         self._has_speech = False
 
-    def _block_duration_ms(self, pcm_bytes: bytes) -> float:
-        frames = len(pcm_bytes) / (self._sample_width * self._channels)
+    def _block_duration_ms(self, n_bytes: int) -> float:
+        """按字节数换算时长
+
+        注意：只接受字节数，不要传 bytes——否则调用方为了取长度就得先把
+        整个缓冲区复制一份，而本方法在 PortAudio 实时回调线程上每 100ms
+        调用一次，15s 缓冲下相当于每秒复制近 5MB。
+        """
+        frames = n_bytes / (self._sample_width * self._channels)
         return frames / self._sample_rate * 1000.0
 
     def _buffer_duration_ms(self) -> float:
-        return self._block_duration_ms(bytes(self._buffer))
+        return self._block_duration_ms(len(self._buffer))
 
     def _is_silent(self, pcm_bytes: bytes) -> bool:
         """基于 RMS 能量的静音检测"""

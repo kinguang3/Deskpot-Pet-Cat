@@ -5,6 +5,8 @@
 """
 
 import json
+import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +33,11 @@ class Storage:
         return self._data_dir / f"{name}.json"
 
     def load(self, name: str = "pet_data") -> dict:
-        """加载数据。"""
+        """加载数据。
+
+        损坏的 JSON 不会静默清空：先尝试回退到 ``.bak`` 备份，再把损坏
+        文件隔离为 ``.corrupt``，避免用户数据被默认值覆盖。
+        """
         path = self._get_file_path(name)
         if path.exists():
             try:
@@ -40,8 +46,8 @@ class Storage:
                 logger.debug("Data loaded: %s", name)
             except json.JSONDecodeError:
                 logger.error("Failed to parse data file: %s", path.name)
-                self._cache[name] = {}
-            except IOError:
+                self._cache[name] = self._recover_corrupt(path)
+            except OSError:
                 logger.error("Failed to read data file: %s", path.name)
                 self._cache[name] = {}
         else:
@@ -50,16 +56,72 @@ class Storage:
         self._loaded = True
         return self._cache[name]
 
-    def save(self, data: dict, name: str = "pet_data"):
-        """保存数据。"""
-        path = self._get_file_path(name)
+    def _recover_corrupt(self, path: Path) -> dict:
+        """数据文件损坏时的恢复：优先用 .bak，再隔离损坏文件"""
+        backup = path.with_suffix(".json.bak")
+        if backup.exists():
+            try:
+                with open(backup, "r", encoding="utf-8") as f:
+                    recovered = json.load(f)
+                logger.warning(
+                    "Recovered data from backup: %s", backup.name
+                )
+                self._quarantine(path)
+                return recovered
+            except (OSError, json.JSONDecodeError):
+                logger.warning("Data backup also unusable: %s", backup.name)
+
+        self._quarantine(path)
+        logger.error(
+            "Data file corrupted and no usable backup; starting empty. "
+            "Corrupt file kept at %s",
+            path.with_suffix(".json.corrupt").name,
+        )
+        return {}
+
+    @staticmethod
+    def _quarantine(path: Path) -> None:
+        """把损坏文件改名隔离，避免被后续写入覆盖"""
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
+            path.replace(path.with_suffix(".json.corrupt"))
+        except OSError:
+            logger.warning("Failed to quarantine corrupt data file: %s", path)
+
+    def save(self, data: dict, name: str = "pet_data") -> bool:
+        """原子化保存数据。
+
+        先序列化到内存，再写临时文件并 fsync，最后 os.replace 原子替换。
+        这样进程崩溃/断电时目标文件要么是旧内容、要么是完整新内容，
+        不会出现被截断的非法 JSON（否则下次 load 会静默清空数据）。
+
+        Returns:
+            True 成功落盘；False 失败（调用方可据此重试）。
+        """
+        path = self._get_file_path(name)
+        tmp_path = path.with_suffix(".json.tmp")
+        backup_path = path.with_suffix(".json.bak")
+        try:
+            # 提前序列化，暴露不可 JSON 序列化的值
+            payload = json.dumps(data, indent=4, ensure_ascii=False)
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            # 覆盖前滚动保留上一份完好内容，供 load() 损坏时回退
+            if path.exists():
+                shutil.copy2(path, backup_path)
+            os.replace(tmp_path, path)
             self._cache[name] = data
             logger.debug("Data saved: %s", name)
-        except IOError:
+            return True
+        except (OSError, TypeError, ValueError):
             logger.exception("Failed to save data: %s", name)
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                pass
+            return False
 
     def get(self, key: str, default=None, name: str = "pet_data") -> Any:
         """获取单个值。"""
@@ -79,4 +141,5 @@ class Storage:
     def save_all(self, name: str = "pet_data"):
         """保存所有缓存数据。"""
         if name in self._cache:
-            self.save(self._cache[name], name)
+            return self.save(self._cache[name], name)
+        return False

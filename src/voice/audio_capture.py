@@ -32,6 +32,7 @@ class AudioCapture:
         self._running = False
         self._callback = None
         self._actual_sample_rate = None
+        self._actual_channels = None
 
     def set_callback(self, callback):
         """设置音频块回调，签名：callback(pcm_bytes: bytes)"""
@@ -49,6 +50,11 @@ class AudioCapture:
     def actual_sample_rate(self):
         """实际生效的采样率（由 sounddevice 返回），未启动时为 None"""
         return self._actual_sample_rate
+
+    @property
+    def actual_channels(self):
+        """实际生效的声道数（由 sounddevice 返回），未启动时为 None"""
+        return self._actual_channels
 
     def start(self) -> bool:
         if self._running:
@@ -74,6 +80,8 @@ class AudioCapture:
             self._stream.start()
             self._running = True
             self._actual_sample_rate = self._stream.samplerate
+            actual_channels = getattr(self._stream, "channels", self._channels)
+            self._actual_channels = actual_channels
             if self._actual_sample_rate != self._sample_rate:
                 logger.warning(
                     "Audio capture actual sample rate %dHz differs from "
@@ -81,29 +89,59 @@ class AudioCapture:
                     self._actual_sample_rate,
                     self._sample_rate,
                 )
+            # Provider（SenseVoice/AssemblyAI）只吃单声道。这里不做下混，
+            # 因为多声道交错 PCM 送进 RMS 分段和 ASR 只会得到错误结果，
+            # 且错得没有任何提示——直接失败让用户去系统里把麦克风设为单声道。
+            if actual_channels != 1:
+                logger.error(
+                    "Audio device reports %d channels; voice pipeline "
+                    "requires mono (1 channel). Set the microphone to mono "
+                    "in system sound settings.",
+                    actual_channels,
+                )
+                self._running = False
+                self._close_stream()
+                return False
             logger.info(
                 "Audio capture started (%dHz, %dch, device=%s)",
                 self._actual_sample_rate,
-                self._channels,
+                actual_channels,
                 self._device if self._device is not None else "default",
             )
             return True
         except Exception:
             logger.exception("Failed to start audio capture")
-            self._stream = None
+            # 关键：RawInputStream 可能已创建成功但 start() 失败，此时对象
+            # 仍持有声卡句柄。必须显式关闭，否则设备被永久占用，
+            # 后续 start() 会持续失败。
+            self._close_stream()
             return False
 
     def stop(self):
         self._running = False
-        if self._stream:
-            try:
-                self._stream.stop()
-                self._stream.close()
-            except Exception:
-                pass
-            self._stream = None
+        self._close_stream()
         self._actual_sample_rate = None
+        self._actual_channels = None
         logger.info("Audio capture stopped")
+
+    def _close_stream(self):
+        """关闭并释放音频流，保证 close() 一定被调用
+
+        stop() 失败不应阻止 close()：否则声卡句柄泄漏。
+        """
+        stream = self._stream
+        if stream is None:
+            return
+        self._stream = None
+        try:
+            stream.stop()
+        except Exception:
+            logger.debug("Audio stream stop() failed (ignored)", exc_info=True)
+        finally:
+            try:
+                stream.close()
+            except Exception:
+                logger.warning("Audio stream close() failed", exc_info=True)
 
     def list_devices(self):
         """返回可用输入设备列表，方便选择 device"""
