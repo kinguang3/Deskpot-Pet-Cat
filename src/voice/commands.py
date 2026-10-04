@@ -19,6 +19,24 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# 有外部副作用、会离开应用的动作：默认必须先说唤醒词。
+# 理由：这类动作一旦被日常语音误触发，用户会直接看到浏览器被打开、
+# 窗口被切走，属于明显的非预期副作用。而 show_time / play_dance
+# 这类只在应用内生效的动作被误触发代价很低，因此保留直接触发。
+WAKE_WORD_REQUIRED_ACTIONS = frozenset({"open_website"})
+
+# 比较时忽略的字符：ASR 结果常带句末标点与空格，不去掉会让「精确匹配」
+# 形同虚设（说「打开百度。」匹配不上「打开百度」）。
+_IGNORED_CHARS = (
+    " \t\r\n\u3000"          # 空格/制表/换行/全角空格
+    "\uff0c\u3002\uff01\uff1f\u3001\uff1b\uff1a"  # ，。！？、；：
+    ",.!?;:~"                # 半角标点
+    "\uff5e\u2026\u2014"     # ～…—
+    "\"'"                   # 直引号
+    "\u201c\u201d\u2018\u2019"  # 弯引号
+    "()\uff08\uff09\u3010\u3011[]{}"  # 括号/方括号
+)
+
 
 class CommandManager:
     """语音指令管理器。"""
@@ -71,26 +89,66 @@ class CommandManager:
 
     # ─── 指令匹配 ───
 
-    def match_command(self, text: str) -> Optional[dict]:
-        """匹配文本中的自定义指令。"""
+    @staticmethod
+    def _normalize(text: str) -> str:
+        """归一化用于比较：小写 + 去掉空格与标点"""
+        return "".join(
+            ch for ch in text.lower() if ch not in _IGNORED_CHARS
+        )
+
+    @staticmethod
+    def requires_wake_word(cmd: dict) -> bool:
+        """该指令是否必须先唤醒
+
+        显式配置 ``require_wake_word`` 优先；未配置时按动作风险分级：
+        有外部副作用的动作默认需要唤醒词。
+        """
+        explicit = cmd.get("require_wake_word")
+        if isinstance(explicit, bool):
+            return explicit
+        return cmd.get("action", "") in WAKE_WORD_REQUIRED_ACTIONS
+
+    def match_command(
+        self, text: str, allow_wake_required: bool = True
+    ) -> Optional[dict]:
+        """匹配文本中的自定义指令。
+
+        Args:
+            text: 识别文本
+            allow_wake_required: 是否允许匹配「必须先唤醒」的指令。
+                直接匹配路径（未唤醒）应传 False，避免日常语音误触发
+                打开浏览器之类的外部动作。
+        """
         if not text:
             return None
 
-        text_lower = text.lower().strip()
+        text_norm = self._normalize(text)
+        if not text_norm:
+            return None
 
         for cmd in self._commands:
-            trigger = cmd.get("trigger", "").lower()
+            trigger = cmd.get("trigger", "")
             if not trigger:
+                continue
+
+            if not allow_wake_required and self.requires_wake_word(cmd):
+                logger.debug(
+                    "跳过需唤醒的指令 '%s'（当前未处于唤醒状态）", trigger
+                )
+                continue
+
+            trigger_norm = self._normalize(trigger)
+            if not trigger_norm:
                 continue
 
             # 支持精确匹配和包含匹配
             match_type = cmd.get("match_type", "contains")
             if match_type == "exact":
-                if text_lower == trigger:
+                if text_norm == trigger_norm:
                     return cmd
             else:
                 # contains (默认)
-                if trigger in text_lower:
+                if trigger_norm in text_norm:
                     return cmd
 
         return None
@@ -268,15 +326,16 @@ class CommandManager:
         """处理识别文本，返回动作类型或 None。
 
         流程：
-        1. 先尝试直接匹配指令（无需唤醒词，方便快速触发）；
+        1. 直接匹配指令（无需唤醒词）；但会跳过「必须先唤醒」的指令，
+           防止日常语音（比如说到「打开空调」）误触发打开浏览器；
         2. 有唤醒词时进入/刷新聆听模式，用于随后的连续指令；
         3. 聆听模式下匹配后续指令，超时自动退出聆听。
         """
         if not text:
             return None
 
-        # 1) 直接匹配指令（唤醒词不是必需条件）
-        cmd = self.match_command(text)
+        # 1) 直接匹配指令（唤醒词不是必需条件，但受风险分级约束）
+        cmd = self.match_command(text, allow_wake_required=False)
         if cmd:
             action = self._build_and_execute(cmd, text)
             # 说了一个指令，顺带刷新聆听窗口，便于连续下达

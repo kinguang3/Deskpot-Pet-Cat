@@ -213,6 +213,8 @@ class SettingsPanel(QWidget):
             "trigger": trigger,
             "action": action_key,
             "description": custom_text or custom_url or action_label,
+            "match_type": dlg.match_type(),
+            "require_wake_word": dlg.require_wake_word(),
         }
         if custom_text:
             cmd["custom_text"] = custom_text
@@ -245,12 +247,16 @@ class SettingsPanel(QWidget):
             action=cmd.get("action", ""),
             custom_text=cmd.get("custom_text", ""),
             custom_url=cmd.get("custom_url", ""),
+            match_type=cmd.get("match_type", "contains"),
+            require_wake_word=cmd.get("require_wake_word"),
         )
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
         cmd["trigger"] = dlg.trigger_text()
         cmd["action"] = dlg.action_key()
+        cmd["match_type"] = dlg.match_type()
+        cmd["require_wake_word"] = dlg.require_wake_word()
 
         # 清理旧的自定义字段并写入新值
         cmd.pop("custom_text", None)
@@ -292,12 +298,25 @@ class SettingsPanel(QWidget):
             action = cmd.get("action", "")
             if action == "open_website":
                 url = cmd.get("custom_url", "")
-                self._commands_list.addItem(f"{trigger} -> 打开 {url}")
+                label = f"{trigger} -> 打开 {url}"
             elif action == "show_dialogue":
                 text = cmd.get("custom_text", "")
-                self._commands_list.addItem(f"{trigger} -> 说 '{text}'")
+                label = f"{trigger} -> 说 '{text}'"
             else:
-                self._commands_list.addItem(f"{trigger} -> {action}")
+                label = f"{trigger} -> {action}"
+
+            # 标出触发条件，避免用户以为随口一句话就能执行外部动作
+            marks = []
+            if cmd.get("require_wake_word"):
+                marks.append("需唤醒")
+            elif cmd.get("action", "") in ("open_website",):
+                marks.append("需唤醒(默认)")
+            if cmd.get("match_type") == "exact":
+                marks.append("精确")
+            if marks:
+                label = f"[{'/'.join(marks)}] {label}"
+
+            self._commands_list.addItem(label)
 
     def _apply_preview(self, key, value):
         """更新临时配置，发出预览信号，"""
@@ -517,10 +536,13 @@ class _CommandDialog(QDialog):
     def __init__(
         self, parent=None, title="指令",
         trigger="", action="", custom_text="", custom_url="",
+        match_type="contains", require_wake_word=None,
     ):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(380)
+        # 用户是否手动改过唤醒词开关；改过后不再按动作自动调整默认值
+        self._wake_manual = False
 
         layout = QVBoxLayout(self)
 
@@ -528,6 +550,12 @@ class _CommandDialog(QDialog):
         self._trigger_edit = QLineEdit(trigger)
         self._trigger_edit.setPlaceholderText("例如：打开百度")
         layout.addWidget(self._trigger_edit)
+
+        layout.addWidget(QLabel("匹配方式:"))
+        self._match_combo = QComboBox()
+        self._match_combo.addItem("包含匹配（说出整句即可触发）", "contains")
+        self._match_combo.addItem("精确匹配（必须只说触发词）", "exact")
+        layout.addWidget(self._match_combo)
 
         layout.addWidget(QLabel("动作:"))
         self._action_combo = QComboBox()
@@ -542,6 +570,18 @@ class _CommandDialog(QDialog):
         self._extra_edit.setPlaceholderText("")
         layout.addWidget(self._extra_edit)
 
+        # 有外部副作用的动作默认要求先唤醒，避免日常语音误触发
+        self._wake_check = QCheckBox("需要先说唤醒词")
+        self._wake_check.setToolTip(
+            "开启后必须先说唤醒词（或在唤醒后的 5 秒内说）才会执行。\n"
+            "「打开网站」这类会切走窗口的动作建议保持开启。"
+        )
+        # 用 clicked 而非 stateChanged：setChecked() 是程序化设置，
+        # 也会发 stateChanged，若监听它会导致「刚自动勾上的默认值」
+        # 被误记为用户手动改过，之后再也不随动作更新默认值。
+        self._wake_check.clicked.connect(self._on_wake_toggled)
+        layout.addWidget(self._wake_check)
+
         self._action_combo.currentIndexChanged.connect(self._on_action_changed)
 
         buttons = QDialogButtonBox(
@@ -552,16 +592,42 @@ class _CommandDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+        # 初始选中匹配方式（缺省 contains，兼容既有配置）
+        idx = self._match_combo.findData(match_type or "contains")
+        if idx >= 0:
+            self._match_combo.setCurrentIndex(idx)
+
         # 初始选中动作（若有）
         if action:
             idx = self._action_combo.findData(action)
             if idx >= 0:
                 self._action_combo.setCurrentIndex(idx)
         self._on_action_changed()
+
+        # 编辑既有指令时回填原有网址/文本（之前这两个参数被忽略，
+        # 导致编辑时输入框是空的，不重填就会把用户的网址清掉）
+        if self.action_key() == "open_website":
+            self._extra_edit.setText(custom_url)
+        elif self.action_key() == "show_dialogue":
+            self._extra_edit.setText(custom_text)
+
+        # 回填唤醒词开关：显式值优先，否则按动作风险取默认
+        if require_wake_word is None:
+            self._wake_check.setChecked(
+                self.action_key() in ("open_website",)
+            )
+        else:
+            self._wake_check.setChecked(bool(require_wake_word))
+            self._wake_manual = True
+
         self._trigger_edit.setFocus()
 
+    def _on_wake_toggled(self):
+        """用户手动切换后不再按动作自动改默认值"""
+        self._wake_manual = True
+
     def _on_action_changed(self):
-        """根据所选动作显示/隐藏附加输入框。"""
+        """根据所选动作显示/隐藏附加输入框，并刷新唤醒词默认值。"""
         key = self._action_combo.currentData()
         if key == "open_website":
             self._extra_label.setText("网址:")
@@ -577,6 +643,8 @@ class _CommandDialog(QDialog):
             self._extra_label.setVisible(False)
             self._extra_edit.setVisible(False)
         self._extra_edit.clear()
+        if not self._wake_manual:
+            self._wake_check.setChecked(key in ("open_website",))
 
     def _on_ok(self):
         """校验输入：触发词必填，网址/文本按需必填。"""
@@ -594,6 +662,12 @@ class _CommandDialog(QDialog):
 
     def action_key(self):
         return self._action_combo.currentData()
+
+    def match_type(self):
+        return self._match_combo.currentData()
+
+    def require_wake_word(self):
+        return self._wake_check.isChecked()
 
     def custom_text(self):
         key = self._action_combo.currentData()
