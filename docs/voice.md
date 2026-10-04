@@ -22,19 +22,33 @@ AudioCapture -> AudioSegmenter -> Provider -> EmotionParser -> EventBus
 
 | provider | 定位 | 能力 |
 | --- | --- | --- |
+| `sensevoice` | 本地 GGUF（推荐） | 中文情绪、语种识别、音频事件检测 |
 | `assemblyai` | 云端 | 高质量转录、英语情绪分析 |
-| `sensevoice` | 本地 GGUF | 中文情绪、语种识别、音频事件检测 |
-| `hybrid` | 组合（推荐） | 两者并行，按语言合并结果 |
+| `hybrid` | 组合（默认） | 本地优先，按需调用云端 |
 
 ## 三、Hybrid 协同流程
 
-`HybridVoiceProvider` 通过 `ThreadPoolExecutor` 并行调用两个子 Provider，
-待两者返回后按下表合并：
+`HybridVoiceProvider` 采用**本地优先的串行策略**：先调用 SenseVoice，再按结果决定
+是否需要 AssemblyAI。
+
+| 本地结果 | 后续动作 |
+| --- | --- |
+| 判为中文且结果有效 | 直接采用，**不调用云端** |
+| 判为英文 | 再调 AssemblyAI，取高质量英文转录与情绪 |
+| 本地不可用 / 连续失败 | 直接降级到 AssemblyAI 全权处理 |
+
+这样设计的原因：中文是主要使用语言，本地模型已足够，且能保证低延迟、零云端
+调用成本与离线可用；云端只在本地覆盖不到的英文场景兜底。
+
+> 早期版本对同一段音频并行请求本地和云端，导致每句话都产生一次云端调用、延迟取
+> 两者最大值，且离线时仍会徒劳等待网络超时。现已改为上述串行策略。
+
+字段合并规则（AssemblyAI 参与时）：
 
 | 字段 | 来源规则 |
 | --- | --- |
-| `text` | 优先 AssemblyAI；为空时用 SenseVoice |
-| `language` | 优先 SenseVoice；其失败时退回 AssemblyAI |
+| `text` | 云端转录文本 |
+| `language` | SenseVoice 语种判定结果 |
 | `emotion` / `sentiment` | 语言为 `en` 且 AssemblyAI 情绪有效时，用 AssemblyAI 的极性映射；否则用 SenseVoice 的原生情绪 |
 | `confidence` | 与情绪来源对应 |
 | `segments` | 与情绪来源对应 |
@@ -125,6 +139,7 @@ Provider 依赖 16kHz 输入，`VoiceManager.start()` 会在采集启动后校�
 | `sensevoice.n_threads` | 本地推理线程数，通过 `-t` 透传给二进制 |
 | `sensevoice.language` | 固定语种（`zh` / `en` / `yue` / `ja` / `ko`），`auto` 为自动检测 |
 | `hybrid.allow_partial_provider` | 是否允许单 Provider 降级运行 |
+| `hybrid.max_workers` | Hybrid 调用子 Provider 的线程池大小（限制并发调用数上限；当前为串行策略，该值不再是"并行跑两个 Provider"） |
 | `hybrid.max_workers` | Hybrid 并行调用子 Provider 的线程数 |
 
 AssemblyAI 的 Key 也可以通过环境变量 `ASSEMBLYAI_API_KEY` 提供。

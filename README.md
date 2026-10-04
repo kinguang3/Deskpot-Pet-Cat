@@ -19,7 +19,7 @@
 
 GBC Nina 是一款轻量级 Windows 桌面宠物，基于 Python + PySide6 构建。她会陪伴你工作、学习，有自己的情绪和行为节奏——安静但好奇，偶尔主动，大部分时间自处。
 
-> **当前状态**: v0.1.1，已实现透明窗口、动画播放、自主行为、鼠标交互、对话气泡、系统托盘、设置面板、语音情绪识别（Hybrid 双 Provider）、自定义语音指令等核心功能。
+> **当前状态**: v0.1.1，已实现透明窗口、动画播放、自主行为、鼠标交互、对话气泡、系统托盘、设置面板、语音情绪识别（Hybrid 双 Provider）、自定义语音指令等核心功能。指令与配置持久化已改为原子写入并带备份恢复。
 
 ---
 
@@ -60,11 +60,13 @@ GBC Nina 的核心目标是提供一个 **有生命感** 的桌面伴侣，而�
 
 - **设置面板** — 可调整窗口大小、透明度、置顶、自动移动、对话开关，以及语音指令管理。
 
-- **语音情绪识别（Hybrid 双 Provider）** — AssemblyAI 负责高质量转录与英语情绪，SenseVoice 负责中文情绪、语种识别与事件检测，两者并行执行并按语言合并结果，支持单 Provider 降级。SenseVoice 推理被串行化保护，连续失败会自动降级，避免崩溃拖垮进程。
+- **语音情绪识别（Hybrid 双 Provider）** — SenseVoice（本地 GGUF）负责中文情绪、语种识别与事件检测，AssemblyAI（云端）负责高质量转录与英语情绪。采用**本地优先、按需云端**的串行策略：SenseVoice 先跑，中文场景直接返回结果、完全不调用云端；只有本地判为英文或不可用时才走 AssemblyAI 兜底。这样中文指令延迟稳定在亚秒级，也不会为中文语料白白消耗云端配额。支持单 Provider 降级。SenseVoice 推理被串行化保护并强制 `--no-gpu`，连续失败会自动禁用，避免崩溃拖垮进程。
 
 - **语音情绪响应** — 用户说话时，Nina 会识别你的情绪并做出反应：你开心她也开心，你难过她会安慰你。
 
-- **自定义语音指令** — 通过设置面板自定义唤醒词和语音指令，支持显示时间/日期、播放动画、显示自定义对话、打开网站等动作。保存后**立即生效，无需重启**。
+- **自定义语音指令** — 通过设置面板自定义唤醒词和语音指令，支持显示时间/日期、播放动画、显示自定义对话、打开网站等动作。保存后**立即生效，无需重启**。可选择「包含匹配 / 精确匹配」，以及是否**必须先说唤醒词**——「打开网站」这类会切走窗口的动作默认需要唤醒，避免日常语音误触发。
+
+- **配置安全写入** — `config/user.json` 与 `data/*.json` 均采用「临时文件 + fsync + 原子替换」写入，断电或进程崩溃不会留下半截文件；每次成功保存滚动保留一份 `.bak`，文件损坏时自动回退备份并把损坏文件隔离为 `.corrupt`，绝不静默清空用户数据。
 
 ---
 
@@ -76,7 +78,7 @@ GBC Nina 的核心目标是提供一个 **有生命感** 的桌面伴侣，而�
 | -------- | -------------------------- |
 | 操作系统 | Windows 10/11              |
 | Python   | 3.10 或更高版本            |
-| 磁盘空间 | ~50 MB（含本地语音模型）   |
+| 磁盘空间 | ~350 MB（本地语音模型约 280 MB） |
 
 ### 2. Python 包依赖
 
@@ -132,9 +134,9 @@ ASSEMBLYAI_API_KEY=your_api_key_here
 
 ### 4. 运行
 
-```bash
-# 方式一：命令行
-python main.py
+```powershell
+# 方式一：命令行（推荐，显式指定解释器，避免装错依赖）
+.\.venv\Scripts\python.exe main.py
 
 # 方式二：双击 run.bat（自动使用虚拟环境）
 ```
@@ -143,21 +145,31 @@ python main.py
 
 ### 5. 打包发布（PyInstaller）
 
-```bash
-# 必须激活虚拟环境并安装 PyInstaller
-.\.venv\Scripts\Activate.ps1
-pip install pyinstaller
+项目使用 spec 文件打包（`GBC.Nina.v0.1.1.spec`），资源目录已配好，无需手工拼 `--add-data`：
 
-# 打包为单目录版（-D 单目录 / -w 无控制台 / -i 图标）
-pyinstaller -D -w -i app.ico -n "GBC Nina v0.1.1" `
-    --add-data "assets;assets" `
-    --add-data "config;config" `
-    --add-data "models;models" `
-    --add-binary "bin;bin" `
-    main.py
+```powershell
+# 安装 PyInstaller（用虚拟环境里的 python，不要用全局 python）
+.\.venv\Scripts\python.exe -m pip install pyinstaller
+
+# 清理旧的产物，避免上一次的残留文件混进新包
+Remove-Item -Recurse -Force dist\GBC.Nina.v0.1.1 -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+
+# 打包（单目录、无控制台）
+.\.venv\Scripts\python.exe -m PyInstaller --noconfirm GBC.Nina.v0.1.1.spec
+
+# 压缩发布包
+Compress-Archive -Path dist\GBC.Nina.v0.1.1 -DestinationPath dist\GBC.Nina.v0.1.1.zip -CompressionLevel Optimal
 ```
 
-> **注意**: 打包产物位于 `dist\GBC Nina v0.1.1\`。由于 `--add-data` 在 PyInstaller 6.x 的 `--onedir` 模式会放入 `_internal\` 子目录，需要把 `_internal\` 下的 `assets`、`bin`、`config`、`models` 复制到顶层目录，程序才能通过相对路径找到资源。release 附件即按此方式整理后压缩。
+产物位于 `dist\GBC.Nina.v0.1.1\`，压缩后约 345 MB。
+
+> **注意**:
+>
+> - **务必用 `.\.venv\Scripts\python.exe`**。即使执行过 `Activate.ps1`，某些环境下 `python` 仍会解析到全局解释器，导致 `No module named PyInstaller`。
+> - PyInstaller 6.x 的 `--onedir` 会把 `assets`、`bin`、`config`、`models` 放进 `_internal\` 子目录，程序已按此结构查找资源，**不需要**再手工复制到顶层。
+> - 打包前务必清理 `dist\GBC.Nina.v0.1.1\`。`--noconfirm` 不会删除旧产物，残留文件（尤其是重复的 280MB 模型）会让包体积虚增近一倍。
+> - `config\user.json` 会被一并打包。首次运行前建议清空它，避免把你的个人配置分发给其他用户。
 
 ---
 
@@ -215,17 +227,23 @@ Nina 的对话根据以下条件动态选择：
 
 语音模块支持三种 provider：
 
-| provider   | 定位       | 能力                                   |
-| ---------- | ---------- | -------------------------------------- |
-| `assemblyai` | 云端     | 高质量转录、英语情绪分析               |
-| `sensevoice` | 本地 GGUF | 中文情绪、语种识别、音频事件检测       |
-| `hybrid`   | 组合（推荐）| 两者并行，按语言合并结果              |
+| provider    | 定位        | 能力                             |
+| ----------- | ----------- | -------------------------------- |
+| `sensevoice` | 本地 GGUF（推荐） | 中文情绪、语种识别、音频事件检测 |
+| `assemblyai` | 云端        | 高质量转录、英语情绪分析         |
+| `hybrid`     | 组合（默认）| 本地优先，按需调用云端           |
 
-`hybrid` 模式下，AssemblyAI 与 SenseVoice 并行处理同一段音频，再按语言合并：
+`hybrid` 模式下，**SenseVoice 先执行**，结果分三种情况：
 
-- **文本**优先 AssemblyAI，为空时用 SenseVoice
-- **语言**优先 SenseVoice，失败时退回 AssemblyAI
-- **情绪**在语言为 `en` 且 AssemblyAI 情绪有效时用 AssemblyAI，否则用 SenseVoice
+| 本地结果           | 后续动作                                                  |
+| ------------------ | --------------------------------------------------------- |
+| 判为中文且结果有效 | 直接采用，**不调用云端**                                  |
+| 判为英文           | 再调 AssemblyAI，取高质量英文转录与情绪                   |
+| 本地不可用/失败   | 直接降级到 AssemblyAI 全权处理                            |
+
+这样设计的原因：中文是主要使用语言，本地模型已足够，且能保证**低延迟 + 零云端调用成本 + 离线可用**；云端只在本地覆盖不到的英文场景兜底。
+
+> **相比早期并行实现的差异**：早期版本对同一段音频同时请求本地和云端，导致每句话都产生一次云端调用、延迟取两者最大值，且离线场景下仍会徒劳等待网络超时。现已改为本地优先的串行策略。
 
 ### 6. 语音情绪响应
 
@@ -246,6 +264,25 @@ Nina 的对话根据以下条件动态选择：
 
 说唤醒词后，Nina 进入聆听模式（5秒），等待你的指令。
 
+#### 匹配方式
+
+每条指令可选两种匹配方式：
+
+| 匹配方式   | 规则                                        | 适用场景                     |
+| ---------- | ------------------------------------------- | ---------------------------- |
+| 包含匹配   | 文本包含触发词即命中                        | 口语化、允许夹在句子里       |
+| 精确匹配   | 去除标点和空白后必须完全相等                | 需要严格控制、避免误触发     |
+
+> 触发词文本在保存和匹配时都会做归一化（中英文标点、空格差异不影响匹配），所以「打开百度。」和「打开 百度」都能命中。
+
+#### 是否需要唤醒词
+
+对**有副作用**的动作（目前是 `open_website`），默认**必须先说唤醒词**才执行，避免日常闲聊中的"打开"直接切走窗口。其余无副作用动作（报时、播动画、说话）仍可直接说触发词。
+
+单条指令可在设置里关闭该要求，但**全局默认只对 `open_website` 生效**——如果把它关掉，就等于接受了误触发风险。
+
+> 兼容说明：早期配置中没有这个字段。旧配置保存时会自动按动作补齐，因此升级后 `open_website` 会自动变成"需唤醒"，属于安全方向的收紧，无需手动迁移。
+
 #### 预设指令
 
 | 触发词   | 动作        | 说明         |
@@ -264,20 +301,21 @@ Nina 的对话根据以下条件动态选择：
 3. 输入触发词（如"打开百度"）
 4. 选择动作类型（如"open_website"）
 5. 输入网址（如"baidu.com"）
-6. 点击"保存"
+6. 需要时调整"匹配方式"与"需要先说唤醒词"
+7. 点击"保存"
 
 支持的动作类型：
 
-| 动作           | 说明             |
-| -------------- | ---------------- |
-| show_time      | 显示时间         |
-| show_date      | 显示日期         |
-| show_greeting  | 显示问候语       |
-| play_happy     | 播放开心动画     |
-| play_dance     | 播放跳舞动画     |
-| show_status    | 显示状态信息     |
-| show_dialogue  | 显示自定义对话   |
-| open_website   | 打开网站         |
+| 动作           | 说明           | 默认需唤醒 |
+| -------------- | -------------- | ---------- |
+| show_time      | 显示时间       | 否         |
+| show_date      | 显示日期       | 否         |
+| show_greeting  | 显示问候语     | 否         |
+| play_happy     | 播放开心动画   | 否         |
+| play_dance     | 播放跳舞动画   | 否         |
+| show_status    | 显示状态信息   | 否         |
+| show_dialogue  | 显示自定义对话 | 否         |
+| open_website   | 打开网站       | **是**     |
 
 ---
 
@@ -291,13 +329,15 @@ GBC-Nina/
 ├── main.py                        # 程序入口
 ├── run.bat                        # 一键启动（cmd）
 ├── requirements.txt               # Python 依赖
+├── GBC.Nina.v0.1.1.spec            # PyInstaller 打包配置
 ├── README.md                      # 项目说明文档
 │
 ├── docs/                          # 文档目录
 │   └── voice.md                   # 语音情绪识别模块说明
 │
 ├── config/                        # 配置文件目录
-│   └── default.json               # 默认配置
+│   ├── default.json               # 默认配置（勿改，作为基线）
+│   └── user.json                  # 用户配置（运行时生成，勿提交）
 │
 ├── assets/                        # 精灵图资源（54张PNG）
 │   ├── cat_idle1-8.png            # 待机动画 (8帧)
@@ -361,7 +401,8 @@ GBC-Nina/
     │       └── hybrid_provider.py         # 双 Provider 协同
     │
     └── utils/                     # 工具类
-        └── storage.py             # JSON数据持久化
+        ├── storage.py             # JSON数据持久化（原子写入+备份恢复）
+        └── logger.py              # 日志（classname 归属 + 高频路径轻量回溯）
 ```
 
 </details>
@@ -386,6 +427,8 @@ GBC-Nina/
                                    → Dialogue(显示反应)
 ```
 
+> EventBus 做了**跨线程安全**：`emit()` 时若调用方不是主线程，事件会入队，由主线程 `QTimer`（10ms）取出后执行回调。这样语音工作线程里产生的指令/情绪事件不会直接碰 Qt 控件，避免跨线程操作 UI 导致的崩溃。
+
 ### 2. 行为系统：有限状态机 + 情感系统
 
 ```
@@ -400,26 +443,29 @@ GBC-Nina/
   │──鼠标悬停──→ [Watch] ──3秒后──→ [Idle]
 ```
 
-### 3. 语音系统：双 Provider 并行
+### 3. 语音系统：本地优先，按需云端
 
 ```
-麦克风 → AudioCapture → AudioSegmenter(VAD) → 并行处理
-                                                ↓
-                                    ┌───────────┴───────────┐
-                                    │                       │
-                              AssemblyAI               SenseVoice
-                              (云端转录)               (本地推理)
-                                    │                       │
-                                    └───────────┬───────────┘
-                                                ↓
-                                    HybridVoiceProvider(合并)
-                                                ↓
-                                    EmotionParser(情绪归一化)
-                                                ↓
-                                    CommandManager(指令检查)
-                                                ↓
-                                    EventBus → App(响应)
+麦克风 → AudioCapture → AudioSegmenter(VAD) → SenseVoice(本地优先)
+        (强制单声道16kHz)      (满缓冲即回调)         │
+                                                       ├─ 判为中文且有效 ──→ 直接采用（不调云端）
+                                                       ├─ 判为英文 ────────→ AssemblyAI(云端转录)
+                                                       └─ 本地不可用 ─────→ AssemblyAI(全权处理)
+                                                                  │
+                                                                  ↓
+                                                       EmotionParser(情绪归一化)
+                                                                  │
+                                                                  ↓
+                                                       CommandManager(指令检查)
+                                                                  │
+                                                                  ↓
+                                                       EventBus → App(响应)
 ```
+
+两个关键设计：
+
+- **AudioCapture 强制单声道 16kHz**。多声道输入会在设备层被拒绝并报错，而不是让下游拿到错位的交织数据导致情绪全乱。
+- **AudioSegmenter 满缓冲即回调**，不做整块缓冲拷贝，实时性优先。代价是分段边界不如按需预读精确，在 VAD 能量抖动时可能切出极短的片段。
 
 ### 4. 窗口底层原理
 
@@ -500,9 +546,10 @@ python main.py
 1. 右键托盘图标 → 设置
 2. 在"语音指令"区域点击"添加"
 3. 输入触发词，选择动作类型
-4. 点击"保存"
+4. 需要时调整"匹配方式"（包含 / 精确）与"需要先说唤醒词"
+5. 点击"保存"
 
-**提示**: 保存后指令**立即生效**，无需重启应用。新增指令会与默认 6 条指令合并保存，不会覆盖它们。
+**提示**: 保存后指令**立即生效**，无需重启应用。新增指令会与默认 6 条指令合并保存，不会覆盖它们。`open_website` 默认勾选"需要先说唤醒词"（见下方 Q7）。
 
 </details>
 
@@ -518,7 +565,60 @@ python main.py
 
 **说明**: 本地 SenseVoice 推理进程偶发崩溃（Windows 异常退出 0xC0000005）。
 
-**解决方案**: v0.1.1 已对 SenseVoice 做串行化保护，连续失败 3 次会自动禁用该 Provider 并降级到 AssemblyAI，不影响主程序运行。
+**解决方案**: v0.1.1 已对 SenseVoice 做串行化保护并强制 `--no-gpu`，连续失败 3 次会自动禁用该 Provider 并降级到 AssemblyAI，不影响主程序运行。
+
+**仍存在的已知问题**: 崩溃根因尚未定位，目前只能降低发生概率，无法根除。遇到崩溃时语音模块会自动恢复，不需要重启应用。
+
+</details>
+
+<details>
+<summary><b>Q7: 说"打开百度"没反应？</b></summary>
+
+这是**预期行为**，不是 bug。`open_website` 会切走你正在看的窗口，属于有副作用的动作，因此默认必须先说唤醒词：
+
+```
+✅「小猫，打开百度」
+❌「打开百度」（默认无响应）
+```
+
+想让这条指令免唤醒，在设置面板里把它的"需要先说唤醒词"取消勾选即可。
+
+</details>
+
+<details>
+<summary><b>Q8: 提示"仅支持单声道麦克风"？</b></summary>
+
+v0.1.1 起，语音模块会主动校验输入声道数，多声道设备会被拒绝而不是继续用错位数据。
+
+**解决方案**:
+
+- 换用单声道麦克风（绝大多数耳麦/桌面麦都是单声道）
+- 在 Windows「设置 → 系统 → 声音 → 输入」里把默认输入改成单声道设备
+- 蓝牙耳麦的免提模式通常是单声道，优先用它
+
+</details>
+
+<details>
+<summary><b>Q9: 点退出时界面卡住不动？</b></summary>
+
+**已知问题**：如果退出时恰好有一段云端转录正在处理中，退出需要等待它结束，最长可能等约 1 分钟，期间窗口显示"未响应"。这是因为停止流程会同步等待推理线程结束，以保证麦克风和子进程被干净释放。
+
+**临时规避**: 先停止使用语音、停顿几秒再退出。
+
+本地识别（SenseVoice）通常在 1 秒内完成，不受影响；只有英文或云端兜底路径才会变慢。
+
+</details>
+
+<details>
+<summary><b>Q10: 配置/data 文件损坏了怎么办？</b></summary>
+
+不会静默丢数据。v0.1.1 的持久化改为「临时文件 + 原子替换」，正常情况下不会写出半截文件。
+
+如果真的损坏：
+
+- `config\user.json.bak` 是上一次成功保存的备份，会被自动回退加载
+- 损坏的原文件会被重命名为 `*.corrupt` 保留在原地，方便你手动检查
+- 同样适用于 `data\*.json`（情感记忆等）
 
 </details>
 
@@ -546,6 +646,9 @@ python main.py
 | ----------------------- | ------------------ |
 | PySide6 (Qt for Python) | LGPL-3.0 / GPL-3.0 |
 | assemblyai              | MIT                |
+| numpy                   | BSD-3-Clause       |
+| sounddevice             | BSD-3-Clause       |
+| python-dotenv           | BSD-3-Clause       |
 
 ---
 
