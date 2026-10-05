@@ -63,6 +63,12 @@ class AssemblyAIProvider(BaseVoiceProvider):
 
         aai.settings.api_key = self._api_key
         aai.settings.http_timeout = self._timeout
+        # SDK 默认 3 秒才轮询一次转录状态，延迟完全被轮询粒度拖住。
+        # 实测（中位，1.4~2.7s 中文音频）：
+        #   polling=3.0 -> 4.30s
+        #   polling=1.0 -> 2.53s
+        #   polling<=0.5 -> 2.7~3.0s（服务端处理成为瓶颈，再快也无收益）
+        aai.settings.polling_interval = 1.0
         self._client = aai
 
     def transcribe_and_analyze(self, audio_bytes: bytes) -> dict:

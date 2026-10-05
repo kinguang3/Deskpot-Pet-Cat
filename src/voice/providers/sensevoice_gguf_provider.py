@@ -43,6 +43,7 @@ sense-voice-main.exe 相关参数：
 规范化: withitn（含数字与标点）/ woitn（原始）
 """
 
+import json
 import os
 import re
 import subprocess
@@ -85,6 +86,9 @@ _AUTO_LANGUAGE = "auto"
 
 #: 连续失败多少次后禁用该 Provider，避免反复崩溃拖垮 hybrid
 MAX_CONSECUTIVE_FAILURES = 3
+
+#: Windows 访问冲突退出码（0xC0000005 有符号/无符号两种表示）
+_ACCESS_VIOLATION_CODES = {3221225501, -1073741819}
 
 
 class SenseVoiceGGUFProvider(BaseVoiceProvider):
@@ -134,8 +138,18 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         # 否则「语音段崩溃 -> 静音段成功」会永远让计数停在 1/3，
         # 永远无法触发自动禁用，崩溃会无限重演
         self._consecutive_failures = 0
+        # 访问冲突（0xC0000005）计数：这是二进制自身缺陷而非音频问题，
+        # 一次即可判定该 exe+模型组合不可用
+        self._access_violations = 0
 
         self._ready = self._check_ready()
+        if self._ready and self._load_broken_marker():
+            self._ready = False
+            logger.error(
+                "SenseVoice 已被标记为不可用（此前在本机上对真实语音崩溃），"
+                "本次启动直接跳过本地识别，改用云端兜底。"
+                "替换 exe 或模型文件后会自动重试。"
+            )
         if self._ready:
             logger.info(
                 "SenseVoiceGGUFProvider ready (model=%s)",
@@ -183,7 +197,9 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             wav_path = self._pcm_to_wav(audio_bytes)
             # 串行化：sense-voice-main.exe 同时只能跑一个实例
             with self._infer_lock:
-                raw_output, stderr, success = self._run_inference(wav_path)
+                raw_output, stderr, success, crashed = self._run_inference(
+                    wav_path
+                )
             parsed = self._parse_output(raw_output)
 
             if success:
@@ -198,6 +214,8 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
                         "(counter stays %d)",
                         self._consecutive_failures,
                     )
+            elif crashed:
+                self._on_access_violation()
             else:
                 self._on_inference_failure()
 
@@ -222,6 +240,85 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             return self._empty_result()
         finally:
             self._remove_temp_wav(wav_path)
+
+    def _on_access_violation(self):
+        """处理 0xC0000005 访问冲突：判定二进制不可用，立即禁用并记住
+
+        实测本机 sense-voice-main.exe 对**任何**真实语音 100% 崩溃
+        （纯静音不崩，正弦音不崩，>=0.4s 语音必崩），且与线程数、GPU 开关、
+        beam 参数、语言设置均无关。崩溃一次要 4.9 秒且零产出，若继续重试，
+        每句话都要先浪费 5 秒才回落云端，用户感知延迟翻倍。
+
+        因此这里不再等待「连续失败 3 次」阈值，第一次访问冲突即禁用，
+        并写入标记文件使后续启动直接跳过本地识别。
+        """
+        self._access_violations += 1
+        self._ready = False
+        logger.error(
+            "SenseVoice 发生访问冲突 (0xC0000005)，判定该二进制在本机"
+            "不可用，已立即禁用本地识别并切换云端兜底。"
+            "替换 bin\\sense-voice-main.exe 或 models\\*.gguf 后重启即可自动恢复。"
+        )
+        self._save_broken_marker()
+
+    def _binary_signature(self) -> str:
+        """用 exe 与模型的大小+mtime 生成指纹
+
+        替换二进制或模型后指纹改变，标记自动失效，无需手动清理。
+        """
+        parts = []
+        for path in (self._exe_path, self._model_path):
+            try:
+                st = path.stat()
+                parts.append(
+                    "%s:%d:%d" % (path.name, st.st_size, st.st_mtime_ns)
+                )
+            except OSError:
+                parts.append("%s:missing" % getattr(path, "name", "?"))
+        return "|".join(parts)
+
+    @property
+    def _marker_path(self) -> Path:
+        # 与 utils/storage.py 保持一致：定位到项目（或 PyInstaller 输出）的
+        # data/ 目录。provider 比 storage 深一层，故取四级父目录。
+        base = (
+            Path(__file__).resolve().parent.parent.parent.parent / "data"
+        )
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.warning(
+                "Failed to create data dir, marker falls back to temp",
+                exc_info=True,
+            )
+            base = Path(tempfile.gettempdir())
+        return base / "sensevoice_broken.json"
+
+    def _load_broken_marker(self) -> bool:
+        """读取标记；指纹一致则表示当前 exe+模型组合已判定为崩溃"""
+        try:
+            with open(self._marker_path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return False
+        if data.get("signature") != self._binary_signature():
+            return False
+        self._access_violations = int(data.get("access_violations") or 1)
+        return True
+
+    def _save_broken_marker(self):
+        payload = {
+            "signature": self._binary_signature(),
+            "access_violations": self._access_violations,
+            "reason": "0xC0000005 access violation on real speech",
+        }
+        try:
+            with open(self._marker_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+        except OSError:
+            logger.warning(
+                "Failed to persist SenseVoice broken marker", exc_info=True
+            )
 
     def _on_inference_failure(self):
         """记录一次失败；连续失败达到阈值后禁用该 Provider"""
@@ -322,7 +419,7 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         return wav_path
 
     def _run_inference(self, wav_path: str):
-        """调用二进制程序，返回 (stdout 文本, stderr 文本, 是否成功)"""
+        """调用二进制程序，返回 (stdout, stderr, 是否成功, 是否访问冲突)"""
         cmd = [
             str(self._exe_path),
             "-m",
@@ -362,13 +459,14 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
                 "SenseVoice 推理超时 %.1fs", self._timeout
             )
             self._current_process = None
-            return "", stderr, False
+            return "", stderr, False, False
         self._current_process = None
 
         stderr = (stderr or "").strip()
 
         if proc.returncode != 0:
-            if proc.returncode in (-1073741819, 3221225501):
+            crashed = proc.returncode in _ACCESS_VIOLATION_CODES
+            if crashed:
                 logger.error(
                     "SenseVoice 崩溃 (0xC0000005 内存访问冲突): %s", stderr
                 )
@@ -378,9 +476,9 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
                     proc.returncode,
                     stderr,
                 )
-            return "", stderr, False
+            return "", stderr, False, crashed
 
-        return (stdout or "").strip(), stderr, True
+        return (stdout or "").strip(), stderr, True, False
 
     def _remove_temp_wav(self, wav_path):
         """删除临时 WAV，忽略文件不存在等错误"""
