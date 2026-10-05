@@ -240,20 +240,30 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             )
 
     def close(self) -> None:
-        """终止正在运行的推理子进程，释放资源。"""
-        if self._current_process is not None:
+        """终止正在运行的推理子进程，释放资源。
+
+        必须无条件复位状态：停止流程依赖本方法终止子进程，若 `close()` 后
+        `is_ready()` 仍返回 True，VoiceManager 会认为本地引擎可用并反复重建。
+        """
+        process = self._current_process
+        self._current_process = None
+        self._ready = False
+
+        if process is None:
+            return
+
+        try:
+            process.terminate()
+            process.wait(timeout=2)
+        except Exception:
             try:
-                self._current_process.terminate()
-                self._current_process.wait(timeout=2)
+                process.kill()
+                process.wait(timeout=2)
             except Exception:
-                try:
-                    self._current_process.kill()
-                    self._current_process.wait(timeout=2)
-                except Exception:
-                    pass
-                self._current_process = None
-            self._ready = False
-            logger.info("SenseVoice 子进程已终止")
+                logger.warning(
+                    "SenseVoice 子进程强制终止失败", exc_info=True
+                )
+        logger.info("SenseVoice 子进程已终止")
 
     # 内部实现
 

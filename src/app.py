@@ -7,6 +7,7 @@
 管理应用生命周期。
 """
 
+import os
 import random
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer, QObject, QEvent, Qt
@@ -260,13 +261,24 @@ class App(QObject):
     def _quit(self):
         """退出应用。"""
         logger.info("Application quitting...")
-        self._voice_manager.stop()
+        quiesced = self._voice_manager.stop()
         self._behavior_controller.stop()
         self._emotion_system.stop()
         self._memory.save()
         self._state_machine.transition_to("idle")
         self._tray.hide()
         QApplication.instance().quit()
+
+        if not quiesced:
+            # 仍有分析任务卡在不可中断的 I/O 上（典型是云端转录）。
+            # concurrent.futures 在解释器退出时会 join 这些线程，最坏等到
+            # provider 超时（60s），表现为"点了退出但进程半天不消失"。
+            # 此时直接结束进程：记忆与配置已同步落盘，本地推理子进程已由
+            # provider.close() 终止，不会残留孤儿进程。
+            logger.warning(
+                "仍有语音任务未结束，跳过线程等待并直接结束进程"
+            )
+            os._exit(0)
 
     def _show_greeting(self):
         """显示问候语。"""

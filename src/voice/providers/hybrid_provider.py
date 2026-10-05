@@ -47,7 +47,11 @@ import concurrent.futures
 import threading
 
 from src.utils.logger import get_logger
-from src.voice.providers.base import BaseVoiceProvider
+from src.voice.providers.base import (
+    SHUTDOWN_GRACE_SECONDS,
+    BaseVoiceProvider,
+    shutdown_executor_bounded,
+)
 
 logger = get_logger(__name__)
 
@@ -75,7 +79,7 @@ class HybridVoiceProvider(BaseVoiceProvider):
             assemblyai_provider: AssemblyAIProvider 实例，可为 None
             sensevoice_provider: SenseVoiceGGUFProvider 实例，可为 None
             allow_partial: 允许只有单个子 Provider 就绪时继续工作
-            max_workers: 并行推理线程数上限
+            max_workers: 调用子 Provider 的线程数上限
         """
         self._assemblyai = assemblyai_provider
         self._sensevoice = sensevoice_provider
@@ -84,6 +88,8 @@ class HybridVoiceProvider(BaseVoiceProvider):
 
         self._executor = None
         self._executor_lock = threading.Lock()
+        self._pending_lock = threading.Lock()
+        self._pending_calls = 0
 
         self._warn_not_ready()
 
@@ -126,9 +132,18 @@ class HybridVoiceProvider(BaseVoiceProvider):
     def close(self) -> None:
         """关闭线程池并释放两个子 Provider"""
         with self._executor_lock:
-            if self._executor is not None:
-                self._executor.shutdown(wait=True, cancel_futures=True)
-                self._executor = None
+            executor = self._executor
+            self._executor = None
+
+        # 有界等待：不阻塞调用方（通常是 Qt 主线程）直到云端超时结束
+        stuck = shutdown_executor_bounded(
+            executor, self._pending_call_count, SHUTDOWN_GRACE_SECONDS
+        )
+        if stuck:
+            logger.warning(
+                "Hybrid 关闭时仍有 %d 个子 Provider 调用未结束，跳过等待",
+                stuck,
+            )
 
         for provider in (self._assemblyai, self._sensevoice):
             if provider is None:
@@ -139,6 +154,10 @@ class HybridVoiceProvider(BaseVoiceProvider):
                 logger.exception(
                     "Failed to close %s provider", provider.name
                 )
+
+    def _pending_call_count(self) -> int:
+        with self._pending_lock:
+            return self._pending_calls
 
     # 内部实现
 
@@ -246,6 +265,8 @@ class HybridVoiceProvider(BaseVoiceProvider):
         if not self._provider_ready(provider):
             return None
         executor = self._ensure_executor()
+        with self._pending_lock:
+            self._pending_calls += 1
         try:
             future = executor.submit(
                 provider.transcribe_and_analyze, audio_bytes
@@ -254,6 +275,9 @@ class HybridVoiceProvider(BaseVoiceProvider):
         except Exception:
             logger.warning("%s 调用失败", label, exc_info=True)
             return None
+        finally:
+            with self._pending_lock:
+                self._pending_calls -= 1
 
     def _merge(self, assemblyai_result: dict, sensevoice_result: dict) -> dict:
         """按语言与可用性合并两个 Provider 的结果"""

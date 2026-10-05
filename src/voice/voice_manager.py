@@ -23,6 +23,10 @@ from PySide6.QtCore import QObject, Signal
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
 from src.utils.logger import get_logger
+from src.voice.providers.base import (
+    SHUTDOWN_GRACE_SECONDS,
+    shutdown_executor_bounded,
+)
 
 logger = get_logger(__name__)
 
@@ -51,6 +55,8 @@ class VoiceManager(QObject):
         self._parser = None
         self._executor = None
         self._analyze_semaphore = None
+        self._futures_lock = threading.Lock()
+        self._pending_futures = set()
 
         # 指令管理器
         from src.voice.commands import CommandManager
@@ -141,9 +147,14 @@ class VoiceManager(QObject):
         )
         return True
 
-    def stop(self):
+    def stop(self) -> bool:
+        """停止语音模块。
+
+        返回 True 表示所有分析任务已结束；False 表示仍有任务卡在不可中断的
+        I/O 上（典型是云端转录），调用方若需立即退出进程应走硬退出路径。
+        """
         if not self._running and self._executor is None:
-            return
+            return True
 
         self._running = False
         if self._capture:
@@ -153,14 +164,32 @@ class VoiceManager(QObject):
 
         executor = self._executor
         self._executor = None
-        if executor is not None:
-            # 等待正在执行的任务结束，并取消尚未开始的任务
-            executor.shutdown(wait=True, cancel_futures=True)
-
         self._analyze_semaphore = None
+
+        # 取消排队任务，并在上限内等待运行中的任务收尾。
+        # 不用 wait=True：调用方通常是 Qt 主线程，无界等待会冻结界面。
+        stuck = shutdown_executor_bounded(
+            executor, self._pending_analyze_count, SHUTDOWN_GRACE_SECONDS
+        )
+        with self._futures_lock:
+            self._pending_futures.clear()
+
         self._cleanup(close_provider=True)
         self.state_changed.emit(False)
-        logger.info("VoiceManager stopped")
+
+        if stuck:
+            logger.warning(
+                "停止时仍有 %d 个分析任务未结束，已跳过等待并强制释放资源"
+                "（provider.close() 已终止本地子进程）",
+                stuck,
+            )
+        else:
+            logger.info("VoiceManager stopped")
+        return stuck == 0
+
+    def _pending_analyze_count(self) -> int:
+        with self._futures_lock:
+            return len(self._pending_futures)
 
     def pause(self):
         if self._capture and self._capture.is_running:
@@ -375,18 +404,37 @@ class VoiceManager(QObject):
             semaphore.release()
             logger.warning("Analyze executor already stopped, drop segment")
             return
-        future.add_done_callback(lambda _future: semaphore.release())
+
+        with self._futures_lock:
+            self._pending_futures.add(future)
+        future.add_done_callback(
+            lambda done: self._on_analyze_done(done, semaphore)
+        )
+
+    def _on_analyze_done(self, future, semaphore):
+        with self._futures_lock:
+            self._pending_futures.discard(future)
+        semaphore.release()
 
     def _analyze(self, audio_bytes: bytes, rms: float):
+        # 停止过程中 provider/parser 可能已被清理，捕获引用后再调用，
+        # 避免对 None 取属性
+        provider = self._provider
+        parser = self._parser
+        if provider is None or parser is None:
+            return
         try:
-            raw = self._provider.transcribe_and_analyze(audio_bytes)
-            parsed = self._parser.parse(raw)
+            raw = provider.transcribe_and_analyze(audio_bytes)
+            parsed = parser.parse(raw)
             parsed["energy"] = rms
             self._publish(parsed)
         except Exception:
             logger.exception("Voice analyze failed")
 
     def _publish(self, parsed: dict):
+        # 已停止时不再派发结果，避免关闭流程中触发 UI 更新
+        if not self._running:
+            return
         if not parsed.get("text"):
             return
 
@@ -455,7 +503,11 @@ class VoiceManager(QObject):
         self, close_provider: bool = False, shutdown_executor: bool = False
     ):
         if shutdown_executor and self._executor is not None:
-            self._executor.shutdown(wait=True, cancel_futures=True)
+            shutdown_executor_bounded(
+                self._executor,
+                self._pending_analyze_count,
+                SHUTDOWN_GRACE_SECONDS,
+            )
             self._executor = None
         if close_provider and self._provider is not None:
             try:
