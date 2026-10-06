@@ -59,8 +59,16 @@ class Pet(QObject):
         return self._facing_right
 
     def set_facing(self, right: bool):
-        """设置朝向。"""
+        """设置朝向。
+
+        该值原本只是存了个布尔，渲染层从没用过它，导致「朝左动画 + 向右
+        实际位移」= 倒着走。这里让朝向真正驱动行走动画：正在播放 walk 动画
+        时，切换到与朝向一致的那一套。撞到屏幕边折返时由 mover 调用。
+        """
         self._facing_right = right
+        cur = self._anim.current_animation
+        if cur in ("walk_left", "walk_right"):
+            self._anim.play("walk_right" if right else "walk_left")
 
     def start(self):
         """启动宠物，开始播放 idle 动画。"""
