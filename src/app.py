@@ -9,7 +9,7 @@
 
 import os
 import random
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QTimer, QObject, QEvent, Qt
 
 from src.core.config import ConfigManager
@@ -41,6 +41,7 @@ from src.dialogue.bubble import DialogueBubble
 from src.dialogue.content import DialogueContent
 from src.ui.tray import SystemTray
 from src.ui.settings import SettingsPanel
+from src.ui.privacy_dialog import PrivacyDialog, VoiceOptInDialog
 from src.utils.storage import Storage
 from src.utils.logger import get_logger
 from src.voice import VoiceManager
@@ -142,6 +143,7 @@ class App(QObject):
         self._tray.show_requested.connect(self._show_window)
         self._tray.hide_requested.connect(self._hide_window)
         self._tray.settings_requested.connect(self._show_settings)
+        self._tray.privacy_requested.connect(self._show_privacy)
         self._tray.quit_requested.connect(self._quit)
 
         # 交互事件
@@ -177,6 +179,12 @@ class App(QObject):
     def start(self):
         """启动应用。"""
         logger.info("Application starting...")
+
+        # 首次运行必须先过隐私协议，否则不启动任何东西（含麦克风）
+        if not self._ensure_privacy_consent():
+            logger.info("User declined privacy agreement, exiting")
+            return False
+
         # 加载配置
         self._apply_config()
 
@@ -212,6 +220,54 @@ class App(QObject):
         QTimer.singleShot(1000, self._show_greeting)
 
         logger.info("Application started")
+        return True
+
+    # ─── 隐私协议 / 首次运行 ───
+
+    def _ensure_privacy_consent(self) -> bool:
+        """确保用户已同意隐私协议。首次运行时弹窗征询。
+
+        返回 False 表示用户不同意，应用应当直接退出。
+        已同意过的用户不再打扰（同意状态落盘到 config/user.json）。
+        """
+        if self._config.get("app.privacy_accepted", False):
+            return True
+
+        logger.info("First run: showing privacy agreement")
+        dlg = PrivacyDialog()
+        if dlg.exec() != PrivacyDialog.DialogCode.Accepted:
+            logger.info("Privacy agreement declined")
+            return False
+        # exec() 返回 Accepted 也要确认勾选确实打上了
+        if not dlg.is_accepted:
+            logger.info("Privacy agreement not checked, treating as declined")
+            return False
+
+        # 语音单独征询，默认不开启麦克风
+        voice_opt = VoiceOptInDialog()
+        wants_voice = voice_opt.exec() == VoiceOptInDialog.DialogCode.Accepted
+
+        self._config.set("app.privacy_accepted", True)
+        self._config.set("app.first_run_completed", True)
+        self._config.set("voice.enabled", bool(wants_voice))
+
+        if not self._config.save():
+            # 落盘失败会导致下次启动又弹协议，必须让用户知道
+            logger.error(
+                "Failed to persist privacy consent; "
+                "agreement will be requested again on next start"
+            )
+            QMessageBox.warning(
+                None,
+                "无法保存设置",
+                "隐私协议同意状态保存失败（程序目录可能不可写）。\n"
+                "本次仍可继续使用，但下次启动会再次询问。",
+            )
+        else:
+            logger.info(
+                "Privacy consent recorded (voice_enabled=%s)", wants_voice
+            )
+        return True
 
     def _apply_config(self):
         """应用配置到各个模块。"""
@@ -261,6 +317,14 @@ class App(QObject):
         self._settings_panel.show()
         self._settings_panel.raise_()
         logger.debug("Settings panel opened")
+
+    def _show_privacy(self):
+        """从托盘查看隐私协议（只读，不改同意状态）。"""
+        dlg = PrivacyDialog()
+        dlg._accept_btn.setVisible(False)
+        dlg._agree_check.setVisible(False)
+        dlg._exit_btn.setText("关闭")
+        dlg.exec()
 
     def _quit(self):
         """退出应用。"""

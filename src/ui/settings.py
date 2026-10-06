@@ -22,11 +22,14 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QDialog,
     QDialogButtonBox,
+    QScrollArea,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
+from src.ui.privacy_dialog import PrivacyDialog
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -50,7 +53,10 @@ class SettingsPanel(QWidget):
         self._dirty = False
 
         self.setWindowTitle("GBC Nina - 设置")
-        self.setFixedSize(350, 550)
+        # 语音区新增了开关/Key/协议按钮等内容，固定尺寸会被裁掉，
+        # 改为可缩放 + 内部滚动
+        self.setMinimumSize(380, 480)
+        self.resize(400, 680)
         self.setWindowFlags(
             Qt.WindowType.WindowCloseButtonHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -61,7 +67,19 @@ class SettingsPanel(QWidget):
         logger.debug("SettingsPanel created")
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 内容放进滚动区，窗口缩小时不会把语音区控件裁掉
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        outer_layout.addWidget(scroll)
+
+        content = QWidget()
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
         layout.setSpacing(12)
         layout.setContentsMargins(16, 16, 16, 16)
 
@@ -118,6 +136,39 @@ class SettingsPanel(QWidget):
         # 语音指令设置
         commands_group = QGroupBox("语音指令")
         commands_layout = QVBoxLayout()
+
+        # 语音总开关：默认关闭（麦克风不采集），需用户主动开启
+        self._voice_enabled_check = QCheckBox("开启语音功能（使用麦克风）")
+        self._voice_enabled_check.setToolTip(
+            "开启后 Nina 会使用麦克风。\n"
+            "本地引擎不可用时，语音片段可能上传至 AssemblyAI 云端。\n"
+            "详见「隐私协议」。"
+        )
+        self._voice_enabled_check.stateChanged.connect(
+            self._on_voice_enabled_changed
+        )
+        commands_layout.addWidget(self._voice_enabled_check)
+
+        privacy_row = QHBoxLayout()
+        privacy_hint = QLabel("语音默认关闭。")
+        privacy_hint.setStyleSheet("color: #888; font-size: 11px;")
+        privacy_row.addWidget(privacy_hint)
+        privacy_row.addStretch()
+        self._privacy_btn = QPushButton("查看隐私协议")
+        self._privacy_btn.clicked.connect(self._show_privacy)
+        privacy_row.addWidget(self._privacy_btn)
+        commands_layout.addLayout(privacy_row)
+
+        # AssemblyAI API Key：语音默认关闭，用户需自行填 Key 才能用云端
+        key_layout = QHBoxLayout()
+        key_layout.addWidget(QLabel("云端 Key:"))
+        self._api_key_input = QLineEdit()
+        self._api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self._api_key_input.setPlaceholderText(
+            "留空则无法使用云端转写（可只用本地引擎）"
+        )
+        key_layout.addWidget(self._api_key_input)
+        commands_layout.addLayout(key_layout)
 
         # 唤醒词
         wake_layout = QHBoxLayout()
@@ -194,6 +245,37 @@ class SettingsPanel(QWidget):
 
     def _on_dialogue_changed(self, state):
         self._apply_preview("behavior.dialogue_enabled", bool(state))
+
+    def _on_voice_enabled_changed(self, state):
+        """语音总开关。麦克风开闭影响较大，打开时再确认一次。"""
+        enabled = bool(state)
+        if enabled:
+            reply = QMessageBox.question(
+                self,
+                "开启语音功能",
+                "开启后 Nina 会使用麦克风收集语音。\n\n"
+                "本地引擎不可用时，语音片段可能上传至 AssemblyAI "
+                "云端进行转写。\n\n"
+                "确定要开启吗？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                # 用户反悔，撤销勾选（blocked 信号避免递归触发）
+                self._voice_enabled_check.blockSignals(True)
+                self._voice_enabled_check.setChecked(False)
+                self._voice_enabled_check.blockSignals(False)
+                return
+        self._apply_preview("voice.enabled", enabled)
+
+    def _show_privacy(self):
+        """重新查看隐私协议（只读展示，不改同意状态）。"""
+        dlg = PrivacyDialog(self)
+        # 同意按钮在这里没有意义，直接隐藏避免误解
+        dlg._accept_btn.setVisible(False)
+        dlg._agree_check.setVisible(False)
+        dlg._exit_btn.setText("关闭")
+        dlg.exec()
 
     def _add_command(self):
         """添加新指令。使用单个表单对话框，避免多步弹窗导致漏选动作。"""
@@ -366,12 +448,22 @@ class SettingsPanel(QWidget):
             self._dialogue_check.setChecked(
                 self._current.get("behavior.dialogue_enabled", True)
             )
+            self._voice_enabled_check.setChecked(
+                self._current.get("voice.enabled", False)
+            )
 
             # 加载唤醒词
             wake_words = self._current.get(
                 "voice.commands.wake_words", ["hey nina", "小猫", "nina"]
             )
             self._wake_words_input.setText(", ".join(wake_words))
+
+            # 加载云端 Key（assemblyai.api_key 优先，回落到顶层 voice.api_key）
+            self._api_key_input.setText(
+                self._current.get("voice.assemblyai.api_key")
+                or self._current.get("voice.api_key")
+                or ""
+            )
 
             # 加载指令列表
             self._refresh_commands_list()
@@ -384,16 +476,27 @@ class SettingsPanel(QWidget):
 
     def _save_settings(self):
         """保存当前临时设置到配置文件。"""
+        # 必须在覆盖 _initial 之前取旧值，用于判断语音是否刚被开启
+        voice_was_enabled = bool(self._initial.get("voice.enabled"))
+
         _PANEL_KEYS = (
             "window.size_scale",
             "window.opacity",
             "window.always_on_top",
             "behavior.auto_move",
             "behavior.dialogue_enabled",
+            "voice.enabled",
         )
         for key in _PANEL_KEYS:
             if key in self._current:
                 self._config.set(key, self._current[key])
+
+        # 保存云端 Key。字段为空表示用户主动清空，照实写入即可；
+        # 若 Key 来自环境变量 ASSEMBLYAI_API_KEY，这里写空也不影响使用。
+        self._config.set(
+            "voice.assemblyai.api_key",
+            self._api_key_input.text().strip(),
+        )
 
         # 保存唤醒词
         wake_text = self._wake_words_input.text()
@@ -409,10 +512,31 @@ class SettingsPanel(QWidget):
             # 否则内存标记为「已保存」但磁盘仍是旧值，状态不一致
             self._dirty = True
             logger.error("保存设置失败，保留未保存状态以便重试")
+            # 必须让用户看见：否则表现为「点了保存没反应」
+            QMessageBox.critical(
+                self,
+                "保存失败",
+                "无法写入配置文件。\n\n"
+                "程序目录可能不可写（例如被放在 C:\\Program Files 下）。\n"
+                "请把程序移到有写入权限的目录（例如 D:\\ 下的任意文件夹）"
+                "后重试。\n\n"
+                "详细信息见 logs 目录下的日志文件。",
+            )
             return
 
         self._initial = self._current.copy()
         self._dirty = False
+
+        # 语音开关变化需要重启才生效（麦克风与 Provider 在 start() 时创建），
+        # 这里明确告知，避免用户以为保存后立刻生效
+        if self._current.get("voice.enabled") and not voice_was_enabled:
+            QMessageBox.information(
+                self,
+                "语音已开启",
+                "语音开关已保存，但需要重启 Nina 才会生效。\n\n"
+                "麦克风与语音引擎在程序启动时初始化，"
+                "如需立即启用请退出后重新运行。",
+            )
 
         self.settings_changed.emit()
         self._event_bus.emit("settings.changed", self._current.copy())

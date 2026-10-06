@@ -44,11 +44,16 @@ def main():
     # 创建并启动应用管理器
     from src.app import App
     nina = App()
-    nina.start()
+
+    # start() 返回 False 表示用户在隐私协议中选择不同意，应直接退出，
+    # 不能进入事件循环空转（否则进程驻留但什么也不做）
+    if not nina.start():
+        logger.info("Startup aborted by user (privacy agreement declined)")
+        return 0
 
     logger.info("Entering event loop")
-    sys.exit(app.exec())
+    return app.exec()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -1,7 +1,9 @@
 {
   "app": {
     "debug": false,
-    "version": "0.1.0"
+    "version": "0.1.0",
+    "privacy_accepted": false,
+    "first_run_completed": false
   },
   "window": {
     "size_scale": 1.0,
@@ -33,7 +35,7 @@
     "default_y": -1
   },
   "voice": {
-    "enabled": true,
+    "enabled": false,
     "provider": "hybrid",
     "api_key": "",
     "language": "zh",

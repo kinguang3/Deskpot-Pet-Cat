@@ -22,6 +22,7 @@ class SystemTray(QObject):
     show_requested = Signal()
     hide_requested = Signal()
     settings_requested = Signal()
+    privacy_requested = Signal()
     quit_requested = Signal()
 
     def __init__(self, parent=None):
@@ -65,6 +66,7 @@ class SystemTray(QObject):
         self._menu.addAction("隐藏 Nina", self._on_hide)
         self._menu.addSeparator()
         self._menu.addAction("设置", self._on_settings)
+        self._menu.addAction("隐私协议", self._on_privacy)
         self._menu.addSeparator()
         self._menu.addAction("退出", self._on_quit)
 
@@ -100,6 +102,10 @@ class SystemTray(QObject):
     def _on_settings(self):
         self.settings_requested.emit()
         self._event_bus.emit("tray.settings_clicked", {})
+
+    def _on_privacy(self):
+        self.privacy_requested.emit()
+        self._event_bus.emit("tray.privacy_clicked", {})
 
     def _on_quit(self):
         self.quit_requested.emit()
