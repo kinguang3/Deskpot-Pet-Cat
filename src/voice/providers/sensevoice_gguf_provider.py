@@ -280,21 +280,47 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
 
     @property
     def _marker_path(self) -> Path:
-        # 标记写在用户数据目录（%APPDATA%/GBC Nina/data），
+        # 标记写在用户数据目录（%APPDATA%/GBC Ninja/data），
         # 不能写安装目录——装到 Program Files 下会没有权限。
         return paths.data_path() / "sensevoice_broken.json"
 
+    def _legacy_marker_path(self) -> Path:
+        """旧版本把标记写在安装目录的 data/ 下。"""
+        return (
+            Path(__file__).resolve().parent.parent.parent.parent
+            / "data"
+            / "sensevoice_broken.json"
+        )
+
     def _load_broken_marker(self) -> bool:
-        """读取标记；指纹一致则表示当前 exe+模型组合已判定为崩溃"""
+        """读取标记；指纹一致则表示当前 exe+模型组合已判定为崩溃。
+
+        优先读用户数据目录；若那里没有，回退到旧版写在安装目录 data/ 下的
+        标记并迁移过来。缺了这一步，路径迁移后标记会被静默忽略，导致
+        SenseVoice 每句话都重新崩溃一次（约 5 秒）才回落云端。
+        """
+        for candidate in (self._marker_path, self._legacy_marker_path()):
+            if not candidate.exists():
+                continue
+            data = self._read_marker(candidate)
+            if data is None:
+                continue
+            if data.get("signature") != self._binary_signature():
+                continue
+            self._access_violations = int(data.get("access_violations") or 1)
+            if candidate != self._marker_path:
+                logger.info("Migrating SenseVoice broken marker to %s", self._marker_path)
+                self._save_broken_marker()
+            return True
+        return False
+
+    def _read_marker(self, path: Path):
+        """读取标记文件内容，损坏时返回 None 而不是抛异常。"""
         try:
-            with open(self._marker_path, encoding="utf-8") as f:
-                data = json.load(f)
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
         except (OSError, ValueError):
-            return False
-        if data.get("signature") != self._binary_signature():
-            return False
-        self._access_violations = int(data.get("access_violations") or 1)
-        return True
+            return None
 
     def _save_broken_marker(self):
         payload = {
@@ -303,6 +329,9 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
             "reason": "0xC0000005 access violation on real speech",
         }
         try:
+            # 目录可能还不存在：VoiceProvider 可能先于 Storage 初始化，
+            # 不建目录会 FileNotFoundError，标记存不下来就等于每次启动都重崩一遍。
+            self._marker_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self._marker_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
         except OSError:
