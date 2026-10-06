@@ -2,6 +2,9 @@
 
 负责持久化存储宠物状态、设置、互动记录。
 使用 JSON 文件存储。
+
+数据目录位于用户数据目录（%APPDATA%/GBC Nina/data），
+不写在程序安装目录里，因此装到 C:\\Program Files 也能正常读写。
 """
 
 import json
@@ -11,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from src.utils.logger import get_logger
+from src.utils import paths
 
 logger = get_logger(__name__)
 
@@ -20,14 +24,35 @@ class Storage:
 
     def __init__(self, data_dir: str = None):
         if data_dir is None:
-            data_dir = str(
-                Path(__file__).resolve().parent.parent.parent / "data"
-            )
+            data_dir = str(paths.data_path())
+
         self._data_dir = Path(data_dir)
-        self._data_dir.mkdir(parents=True, exist_ok=True)
+        self._available = True
+
+        # 建目录失败不能让程序起不来：降级为「不持久化」，
+        # 桌宠仍可正常运行，只是这次不保存记忆。
+        try:
+            self._data_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            self._available = False
+            logger.error(
+                "Data dir %s unavailable; running without persistence",
+                self._data_dir,
+                exc_info=True,
+            )
+
         self._cache: dict[str, Any] = {}
         self._loaded = False
-        logger.debug("Storage initialized (dir: %s)", self._data_dir)
+        logger.debug(
+            "Storage initialized (dir: %s, available: %s)",
+            self._data_dir,
+            self._available,
+        )
+
+    @property
+    def available(self) -> bool:
+        """数据目录是否可用（False 表示本次运行不会持久化）。"""
+        return self._available
 
     def _get_file_path(self, name: str) -> Path:
         return self._data_dir / f"{name}.json"

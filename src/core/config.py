@@ -7,9 +7,13 @@
 配置优先级：用户配置 > 默认配置
 
 路径处理约定：
-- 配置文件中的路径可以写成相对路径（相对于项目根目录）或绝对路径
+- default.json 是**只读资源**，随程序分发（安装目录内）
+- user.json 是**用户数据**，写在 %APPDATA%/GBC Nina/config/ 下
+  （安装目录只读也能正常工作，例如装在 C:\\Program Files）
+- 旧版本把 user.json 写在安装目录 config/ 下，首次运行会自动迁移
+- 配置文件中的路径可以写成相对路径或绝对路径
 - 读取路径类配置时，统一使用 ConfigManager.get_path()
-  它会自动把相对路径基于项目根目录解析成绝对路径
+  它会自动把相对路径基于程序资源根目录解析成绝对路径
   这样程序无论从哪个工作目录启动都能正确找到文件
 """
 
@@ -19,6 +23,7 @@ import shutil
 from pathlib import Path
 
 from src.utils.logger import get_logger
+from src.utils import paths
 
 logger = get_logger(__name__)
 
@@ -38,10 +43,15 @@ class ConfigManager:
             return
         self._initialized = True
 
-        self._base_dir = Path(__file__).resolve().parent.parent.parent
-        self._config_dir = self._base_dir / "config"
-        self._user_config_path = self._config_dir / "user.json"
-        self._default_config_path = self._config_dir / "default.json"
+        # 资源根目录（只读）：models/ bin/ assets/ config/default.json
+        self._base_dir = paths.app_base_dir()
+        # 用户配置（可写）：%APPDATA%/GBC Nina/config/user.json
+        self._config_dir = paths.user_config_path().parent
+        self._user_config_path = paths.user_config_path()
+        self._default_config_path = paths.default_config_path()
+
+        # 旧版本把 user.json 写在安装目录里，先尝试迁移
+        paths.migrate_legacy_user_config()
 
         self._data: dict = {}
         self._load()

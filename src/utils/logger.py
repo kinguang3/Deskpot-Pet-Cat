@@ -24,7 +24,7 @@ import sys
 import time
 from logging import Filter, LogRecord, StreamHandler
 
-DEFAULT_LOG_DIR = "./logs"
+DEFAULT_LOG_DIR = None  # None 表示自动解析到用户数据目录（见 setup_logger）
 DEFAULT_LOG_PREFIX = "app"
 DEFAULT_MAX_FILES = 3
 DEFAULT_DATE_FMT = "%Y-%m-%d %H:%M:%S"
@@ -150,7 +150,7 @@ def _cleanup_old_logs():
 
 def setup_logger(
     debug_mode: bool = True,
-    log_dir: str = DEFAULT_LOG_DIR,
+    log_dir: str = None,
     log_prefix: str = DEFAULT_LOG_PREFIX,
     max_log_files: int = DEFAULT_MAX_FILES,
     console_level: int = logging.DEBUG,
@@ -163,7 +163,8 @@ def setup_logger(
 
     Args:
         debug_mode: 若为 True，控制台输出 DEBUG 级别；否则 INFO 级别。
-        log_dir: 日志文件存放目录。
+        log_dir: 日志文件存放目录。None 时自动解析到用户数据目录
+            （``%APPDATA%/GBC Nina/logs``），不再用相对 CWD 的 ./logs。
         log_prefix: 日志文件名前缀。
         max_log_files: 保留的最大日志文件数（超出的在程序退出时删除）。
         console_level: 控制台输出最低级别（若未指定，根据 debug_mode 决定）。
@@ -177,14 +178,26 @@ def setup_logger(
         return
     _initialized = True
 
-    _log_dir = log_dir.strip()
     _log_prefix = log_prefix.strip()
     _max_files = max_log_files
+
+    # 延迟导入：paths 依赖本模块的 get_logger，模块级互相导入会成环
+    if log_dir is None:
+        try:
+            from src.utils.paths import log_dir as _resolve_log_dir
+
+            log_dir = str(_resolve_log_dir())
+        except Exception:
+            log_dir = os.path.join(
+                os.path.expanduser("~"), ".gbc_nina", "logs"
+            )
+    _log_dir = log_dir.strip()
 
     # 创建日志目录
     try:
         os.makedirs(_log_dir, exist_ok=True)
     except OSError as e:
+        # 目录建不出来就退回控制台，不能让整个程序起不来
         print(
             f"Failed to create log directory {_log_dir}: {e}", file=sys.stderr
         )

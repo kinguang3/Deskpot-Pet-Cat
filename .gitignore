@@ -27,6 +27,8 @@ Desktop.ini
 .DS_Store
 
 # User config (keep default, ignore user overrides)
+# 正式运行时 user.json 已迁到 %APPDATA%/GBC Nina/config/；
+# 这里的 config/user.json 只在开发机上存在，作为迁移源。
 config/user.json
 
 # Atomic-write artifacts (temp file, rolling backup, quarantined corrupt file)
@@ -38,8 +40,11 @@ config/user.json
 .env
 
 # Data (runtime data, not source)
+# 运行期数据默认在 %APPDATA%/GBC Nina/，以下是开发/便携模式下的本地副本
 data/
+data_portable/
 temp/
+portable.txt
 
 # Logs
 logs/

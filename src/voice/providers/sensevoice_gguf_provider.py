@@ -54,6 +54,7 @@ from pathlib import Path
 
 from src.core.config import ConfigManager
 from src.utils.logger import get_logger
+from src.utils import paths
 from src.voice.providers.base import BaseVoiceProvider
 
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -158,10 +159,11 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
         else:
             logger.error("SenseVoiceGGUFProvider not ready, check paths")
 
+        # 临时 WAV 目录：配置项若指向不可写位置（典型情况：装在
+        # Program Files 下而配置写的是相对路径 temp/），自动改用用户数据目录。
         configured = self._config.get_path("voice.sensevoice.temp_path")
-        self._temp_dir = (
-            Path(configured) if configured else Path(tempfile.gettempdir())
-        )
+        candidate = Path(configured) if configured else paths.temp_path()
+        self._temp_dir = paths.writable_dir(candidate)
         try:
             self._temp_dir.mkdir(parents=True, exist_ok=True)
         except OSError:
@@ -169,7 +171,6 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
                 "Failed to create temp dir, fallback to system temp"
             )
             self._temp_dir = Path(tempfile.gettempdir())
-            self._temp_dir.mkdir(parents=True, exist_ok=True)
 
     # BaseVoiceProvider 接口
 
@@ -279,20 +280,9 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
 
     @property
     def _marker_path(self) -> Path:
-        # 与 utils/storage.py 保持一致：定位到项目（或 PyInstaller 输出）的
-        # data/ 目录。provider 比 storage 深一层，故取四级父目录。
-        base = (
-            Path(__file__).resolve().parent.parent.parent.parent / "data"
-        )
-        try:
-            base.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            logger.warning(
-                "Failed to create data dir, marker falls back to temp",
-                exc_info=True,
-            )
-            base = Path(tempfile.gettempdir())
-        return base / "sensevoice_broken.json"
+        # 标记写在用户数据目录（%APPDATA%/GBC Nina/data），
+        # 不能写安装目录——装到 Program Files 下会没有权限。
+        return paths.data_path() / "sensevoice_broken.json"
 
     def _load_broken_marker(self) -> bool:
         """读取标记；指纹一致则表示当前 exe+模型组合已判定为崩溃"""
