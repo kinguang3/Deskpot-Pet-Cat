@@ -175,7 +175,7 @@ Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
 Compress-Archive -Path dist\GBC.Nina.v0.1.1 -DestinationPath dist\GBC.Nina.v0.1.1.zip -CompressionLevel Optimal
 ```
 
-产物位于 `dist\GBC.Nina.v0.1.1\`，压缩后约 345 MB。
+产物位于 `dist\GBC.Nina.v0.1.1\`，压缩后约 330 MB（其中 SenseVoice 模型约 280 MB，是体积主要来源）。
 
 > **注意**:
 >
