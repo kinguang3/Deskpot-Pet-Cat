@@ -103,6 +103,27 @@ class PetWindow(QMainWindow):
         # 一次性设置几何，避免中间状态闪烁
         self.setGeometry(new_x, new_y, new_w, new_h)
 
+    def set_always_on_top(self, on_top: bool):
+        """设置窗口是否始终置顶。
+
+        修改 windowFlags 会让窗口隐藏，必须重新 show() 才生效。
+        几何信息在换 flag 时会被 Qt 保留，这里仍显式恢复一次位置，
+        避免在部分平台上出现窗口跳回 (0, 0)。
+        """
+        flags = self.windowFlags()
+        if on_top:
+            flags |= Qt.WindowType.WindowStaysOnTopHint
+        else:
+            flags &= ~Qt.WindowType.WindowStaysOnTopHint
+        if flags == self.windowFlags():
+            return
+        was_visible = self.isVisible()
+        geo = self.geometry()
+        self.setWindowFlags(flags)
+        if was_visible:
+            self.show()
+            self.setGeometry(geo)
+
     def paintEvent(self, event):
         """绘制当前帧到窗口。"""
         if self._current_pixmap.isNull():

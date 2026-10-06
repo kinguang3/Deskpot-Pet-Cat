@@ -72,7 +72,16 @@ class BehaviorScheduler:
         self._sleepiness: float = 20.0
         self._affection: float = 40.0
 
+        # 是否允许自主移动（behavior.auto_move）。关闭时 walk/stop 权重归零，
+        # Nina 仍会有 watch/happy 等原地反应，只是不再自己走动。
+        self._auto_move: bool = True
+
         logger.debug("BehaviorScheduler initialized")
+
+    def set_auto_move(self, enabled: bool):
+        """设置是否允许自主移动。"""
+        self._auto_move = bool(enabled)
+        logger.info("BehaviorScheduler auto_move -> %s", self._auto_move)
 
     # ─── 状态注入 ───
 
@@ -137,6 +146,12 @@ class BehaviorScheduler:
     def _calculate_weights(self):
         """根据内部状态计算最终权重。"""
         w = dict(self._base_weights)
+
+        # 关闭自主移动：walk / stop 权重直接归零。
+        # stop 表示「走一段后停下张望」，同样依赖位移，一并禁用。
+        if not self._auto_move:
+            w[BEHAVIOR_WALK] = 0.0
+            w[BEHAVIOR_STOP] = 0.0
 
         # Energy 影响
         # Energy 高 → walk/happy 增加

@@ -32,6 +32,7 @@ from src.behavior.states import (
     WakeState,
 )
 from src.behavior.controller import BehaviorController
+from src.behavior.mover import WalkMover
 from src.behavior.emotion import EmotionSystem
 from src.behavior.memory import Memory
 
@@ -81,6 +82,9 @@ class App(QObject):
 
         # 行为控制器（集中管理自主行为 + 无互动睡眠）
         self._behavior_controller = BehaviorController(self._state_machine)
+
+        # 自主行走位移（把 walk 状态真正落到窗口坐标上）
+        self._walk_mover = WalkMover(self._pet, self._window)
 
         # 情感系统（管理内部状态，影响行为权重）
         self._emotion_system = EmotionSystem(
@@ -217,6 +221,11 @@ class App(QObject):
         opacity = self._config.get("window.opacity", 0.95)
         self._window.set_opacity(opacity)
 
+        # 置顶状态必须在这里应用，否则用户保存后重启就丢失
+        self._window.set_always_on_top(
+            self._config.get("window.always_on_top", True)
+        )
+
     def _apply_settings_preview(self, settings: dict):
         """根据预览设置实时更新桌宠窗口"""
         # 大小缩放
@@ -226,14 +235,9 @@ class App(QObject):
         opacity = settings.get("window.opacity", 0.95)
         self._window.setWindowOpacity(opacity)
         # 置顶
-        topmost = settings.get("window.always_on_top", True)
-        flags = self._window.windowFlags()
-        if topmost:
-            flags |= Qt.WindowType.WindowStaysOnTopHint
-        else:
-            flags &= ~Qt.WindowType.WindowStaysOnTopHint
-        self._window.setWindowFlags(flags)
-        self._window.show()
+        self._window.set_always_on_top(
+            settings.get("window.always_on_top", True)
+        )
 
     def _show_window(self):
         """显示窗口。"""
@@ -263,6 +267,7 @@ class App(QObject):
         logger.info("Application quitting...")
         quiesced = self._voice_manager.stop()
         self._behavior_controller.stop()
+        self._walk_mover.stop()
         self._emotion_system.stop()
         self._memory.save()
         self._state_machine.transition_to("idle")

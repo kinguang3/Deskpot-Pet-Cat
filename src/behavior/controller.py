@@ -66,6 +66,13 @@ class BehaviorController(QObject):
         self._walk_min = self._config.get("behavior.walk_duration_min", DEFAULT_WALK_MIN)
         self._walk_max = self._config.get("behavior.walk_duration_max", DEFAULT_WALK_MAX)
 
+        # 自主移动开关：同时下发给 scheduler（不给 walk/stop 权重）
+        # 和位移执行器（WalkMover），否则关掉开关 Nina 还会原地踏步
+        self._auto_move = bool(self._config.get("behavior.auto_move", True))
+        self._scheduler.set_auto_move(self._auto_move)
+
+        self._event_bus.on("settings.changed", self._on_settings_changed)
+
         # Debug 模式下缩短超时
         if self._config.get("app.debug", False):
             debug_timeout = self._config.get("behavior.debug_sleep_timeout", 10)
@@ -131,6 +138,23 @@ class BehaviorController(QObject):
     def refresh_interaction(self):
         """刷新最后互动时间。"""
         self._last_interact_time = time.time()
+
+    def _on_settings_changed(self, data: dict):
+        """设置变更时热更新自主移动开关。"""
+        if not isinstance(data, dict):
+            return
+        if "behavior.auto_move" not in data:
+            return
+        enabled = bool(data["behavior.auto_move"])
+        if enabled == self._auto_move:
+            return
+        self._auto_move = enabled
+        self._scheduler.set_auto_move(enabled)
+        logger.info("auto_move changed -> %s", enabled)
+
+    @property
+    def auto_move(self) -> bool:
+        return self._auto_move
 
     # ─── 自主行为决策（使用 Scheduler） ───
 
