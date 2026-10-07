@@ -41,6 +41,18 @@ class Storage:
                 exc_info=True,
             )
 
+        # 旧版本把 data/（互动记忆等）写在安装目录里。装进 Program Files
+        # 后那里不可写，等于永久丢失记忆。此处把旧文件一次性迁移过来，
+        # 只复制目标不存在的文件，幂等、绝不覆盖新数据。
+        if self._available:
+            try:
+                paths.migrate_legacy_user_data()
+            except Exception:
+                logger.warning(
+                    "Legacy data migration skipped due to error",
+                    exc_info=True,
+                )
+
         self._cache: dict[str, Any] = {}
         self._loaded = False
         logger.debug(

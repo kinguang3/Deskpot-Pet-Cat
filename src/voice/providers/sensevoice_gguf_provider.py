@@ -280,7 +280,7 @@ class SenseVoiceGGUFProvider(BaseVoiceProvider):
 
     @property
     def _marker_path(self) -> Path:
-        # 标记写在用户数据目录（%APPDATA%/GBC Ninja/data），
+        # 标记写在用户数据目录（%APPDATA%/GBC Nina/data），
         # 不能写安装目录——装到 Program Files 下会没有权限。
         return paths.data_path() / "sensevoice_broken.json"
 

@@ -39,6 +39,7 @@
     "provider": "hybrid",
     "api_key": "",
     "language": "zh",
+    "input_device": null,
     "sample_rate": 16000,
     "channels": 1,
     "min_confidence": 0.5,

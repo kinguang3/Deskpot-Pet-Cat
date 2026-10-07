@@ -3,12 +3,80 @@
 
 """麦克风采集模块
 
-只负责把原始音频块通过回调吐出，不做分段、不做识别
+只负责把原始音频块通过回调吐出，不做分段、不做识别。
+
+- 可通过 ``voice.input_device`` 选择具体麦克风（按名称匹配，重启不漂移），
+  缺省用系统默认输入。
+- 若所选设备是多声道（如麦克风阵列），自动下混为单声道再吐出：
+  直接按单声道请求有时只会拿到第 0 声道（静音），白费一个能用的麦。
 """
+
+import numpy as np
 
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def input_devices() -> list[dict]:
+    """列出所有可用的输入设备（含声道数），供设置页展示。"""
+    try:
+        import sounddevice as sd
+    except ImportError:
+        return []
+    devices = []
+    for index, info in enumerate(sd.query_devices()):
+        if info["max_input_channels"] > 0:
+            devices.append(
+                {
+                    "index": index,
+                    "name": info["name"],
+                    "channels": info["max_input_channels"],
+                    "hostapi": info["hostapi"],
+                    "default_samplerate": info["default_samplerate"],
+                }
+            )
+    return devices
+
+
+def resolve_input_device(configured) -> int | None:
+    """把配置里的设备名/索引解析为 sounddevice 可用的 device 参数。
+
+    返回 None 表示使用系统默认。按设备名（子串匹配）而不是按索引保存，
+    因为 PortAudio 索引在重启/拔插后会漂移。
+    """
+    if configured is None or str(configured).strip() == "":
+        return None
+    if isinstance(configured, int):
+        return configured
+    text = str(configured).strip()
+    if text.lstrip("-").isdigit():
+        return int(text)
+    try:
+        import sounddevice as sd
+    except ImportError:
+        return None
+
+    matches = [d for d in input_devices() if text.lower() in d["name"].lower()]
+    if not matches:
+        logger.warning(
+            "Configured input device '%s' not found; using system default",
+            configured,
+        )
+        return None
+    if len(matches) == 1:
+        return matches[0]["index"]
+    # 多个同名设备（不同 host API）：取第一个能按 16k 单声道打开的
+    for dev in matches:
+        try:
+            with sd.RawInputStream(
+                samplerate=16000, blocksize=1600, dtype="int16",
+                channels=1, device=dev["index"],
+            ):
+                return dev["index"]
+        except Exception:
+            continue
+    return matches[0]["index"]
 
 
 class AudioCapture:
@@ -67,12 +135,27 @@ class AudioCapture:
             )
             return False
 
+        # capture_channels：实际向声卡请求的声道数。
+        # 显式指定设备且设备是多声道时，按设备声道采集再下混为单声道，
+        # 避免「按单声道请求拿到静音」。默认设备仍按 1 声道保持旧行为。
+        capture_channels = self._channels
+        if self._device is not None and isinstance(self._device, int):
+            try:
+                info = sd.query_devices(self._device)
+                if info is not None and int(info["max_input_channels"] or 1) > 1:
+                    capture_channels = min(int(info["max_input_channels"]), 8)
+            except Exception:
+                logger.debug(
+                    "Failed to query device %s channels", self._device,
+                    exc_info=True,
+                )
+
         try:
             self._stream = sd.RawInputStream(
                 samplerate=self._sample_rate,
                 blocksize=self._blocksize,
                 dtype="int16",
-                channels=self._channels,
+                channels=capture_channels,
                 device=self._device,
                 latency=self._latency,
                 callback=self._on_audio,
@@ -80,7 +163,7 @@ class AudioCapture:
             self._stream.start()
             self._running = True
             self._actual_sample_rate = self._stream.samplerate
-            actual_channels = getattr(self._stream, "channels", self._channels)
+            actual_channels = getattr(self._stream, "channels", capture_channels)
             self._actual_channels = actual_channels
             if self._actual_sample_rate != self._sample_rate:
                 logger.warning(
@@ -89,19 +172,20 @@ class AudioCapture:
                     self._actual_sample_rate,
                     self._sample_rate,
                 )
-            # Provider（SenseVoice/AssemblyAI）只吃单声道。这里不做下混，
-            # 因为多声道交错 PCM 送进 RMS 分段和 ASR 只会得到错误结果，
-            # 且错得没有任何提示——直接失败让用户去系统里把麦克风设为单声道。
-            if actual_channels != 1:
-                logger.error(
-                    "Audio device reports %d channels; voice pipeline "
-                    "requires mono (1 channel). Set the microphone to mono "
-                    "in system sound settings.",
+            # Provider（SenseVoice/AssemblyAI）只吃单声道。多声道输入在这里
+            # 自动下混为单声道，不再直接失败——否则「麦克风阵列」这类多声道
+            # 设备一选就废，用户又无从得知原因。
+            if actual_channels > 1:
+                logger.info(
+                    "Audio device reports %d channels; downmixing to mono",
                     actual_channels,
                 )
-                self._running = False
-                self._close_stream()
-                return False
+            elif actual_channels != 1:
+                logger.warning(
+                    "Audio device reports %d channels; pipelines requires "
+                    "mono, result may be invalid",
+                    actual_channels,
+                )
             logger.info(
                 "Audio capture started (%dHz, %dch, device=%s)",
                 self._actual_sample_rate,
@@ -157,7 +241,24 @@ class AudioCapture:
         if status:
             logger.warning("Audio status: %s", status)
         if self._callback:
+            # 多声道交错 PCM 下混成单声道（16bit 内取平均），
+            # 保证下游 RMS 分段与 ASR 只见到单声道数据。
+            channels = self._actual_channels or 1
             try:
-                self._callback(bytes(indata))
+                if channels > 1:
+                    raw = np.frombuffer(bytes(indata), dtype=np.int16)
+                    usable = len(raw) - (len(raw) % channels)
+                    mono = raw[:usable].reshape(-1, channels).astype(
+                        np.int32
+                    )
+                    mono = np.mean(mono, axis=1).astype(np.int16)
+                    data = bytes(mono.tobytes())
+                else:
+                    data = bytes(indata)
+            except Exception:
+                logger.exception("Error downmixing audio block")
+                return
+            try:
+                self._callback(data)
             except Exception:
                 logger.exception("Error in audio callback")

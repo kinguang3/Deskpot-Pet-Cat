@@ -30,7 +30,7 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-AGREEMENT_HTML = """
+AGREEMENT_HTML = r"""
 <h3 style="margin-bottom:6px;">Nina 隐私协议</h3>
 
 <p><b>本软件是本地运行的桌面宠物，除下述两项外不收集、不上传任何数据。</b></p>
@@ -52,12 +52,14 @@ AssemblyAI 云服务。此时<b>你的语音片段会被上传到 AssemblyAI</b>
 <h4>3. 本地存储的数据</h4>
 <p>以下内容<b>仅保存在你自己的电脑上</b>，不会上传：</p>
 <ul>
-  <li>互动记忆（互动次数、心情变化），位于 <code>data/</code></li>
+  <li>互动记忆（互动次数、心情变化），位于用户目录 <code>data/</code></li>
   <li>窗口大小、透明度、行为参数等设置，位于 <code>config/</code></li>
   <li>运行日志，位于 <code>logs/</code></li>
   <li>临时音频中间文件，位于 <code>temp/</code>（推理后即删除）</li>
 </ul>
-<p>卸载时删除程序目录即可全部清除。</p>
+<p>新版将用户数据保存到系统用户目录（Windows 下为
+<code>%APPDATA%\GBC Nina\</code>），卸载程序不会删除这些数据。
+需要彻底清除时，请手动删除上述用户目录。</p>
 
 <h4>4. API Key</h4>
 <p>如果你启用云端转写，需要自行提供 AssemblyAI API Key。

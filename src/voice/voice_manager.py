@@ -92,7 +92,7 @@ class VoiceManager(QObject):
         if not self._build_provider(provider_name, sample_rate, channels):
             return False
 
-        from src.voice.audio_capture import AudioCapture
+        from src.voice.audio_capture import AudioCapture, resolve_input_device
         from src.voice.emotion_parser import EmotionParser
 
         self._parser = EmotionParser(
@@ -117,9 +117,13 @@ class VoiceManager(QObject):
             self._max_concurrent
         )
 
+        input_device = resolve_input_device(
+            self._config.get("voice.input_device")
+        )
         self._capture = AudioCapture(
             sample_rate=sample_rate,
             channels=channels,
+            device=input_device,
         )
         self._capture.set_callback(self._on_audio)
 

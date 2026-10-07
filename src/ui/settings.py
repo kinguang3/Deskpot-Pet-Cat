@@ -24,15 +24,95 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QScrollArea,
     QMessageBox,
+    QProgressBar,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
 from src.ui.privacy_dialog import PrivacyDialog
 from src.utils.logger import get_logger
+from src.voice.audio_capture import input_devices, resolve_input_device
 
 logger = get_logger(__name__)
+
+
+class MicLevelMonitor(QThread):
+    """实时监测麦克风输入电平（0~100，近似 dBFS 映射）。
+
+    点击「测试麦克风」时独立开路采集，不依赖正在运行的语音模块。
+    多声道设备自动下混为单声道再算电平，与主采集逻辑一致。
+    """
+
+    level_changed = Signal(int, int)  # (percent, rms)
+
+    def __init__(self, device=None, parent=None):
+        super().__init__(parent)
+        self._device = device
+        self._stop = False
+
+    def stop(self):
+        self._stop = True
+
+    def run(self):
+        try:
+            import numpy as np
+            import sounddevice as sd
+        except ImportError:
+            logger.error("sounddevice not installed for mic level monitor")
+            return
+
+        channels = 1
+        device = self._device
+        if device is not None:
+            try:
+                info = sd.query_devices(device)
+                if int(info.get("max_input_channels") or 1) > 1:
+                    channels = min(int(info["max_input_channels"]), 8)
+            except Exception:
+                channels = 1
+
+        stream = None
+        store = []
+
+        def cb(indata, frames, time_info, status):
+            try:
+                # RawInputStream 的 indata 是 raw buffer，不是 numpy 数组
+                a = np.frombuffer(indata, dtype=np.int16).astype(np.int32)
+                ch = a.size // frames
+                if ch > 1:
+                    usable = a.size - (a.size % ch)
+                    a = a[:usable].reshape(-1, ch).mean(axis=1)
+                rms = float(np.sqrt(np.mean(a.astype(np.float32) ** 2)))
+                store.append(rms)
+            except Exception:
+                pass
+
+        try:
+            stream = sd.RawInputStream(
+                samplerate=16000, blocksize=1600, dtype="int16",
+                channels=channels, device=device, callback=cb,
+            )
+            stream.start()
+            while not self._stop:
+                self.msleep(200)
+                if store:
+                    # 取窗口内峰值，语音瞬时电平才有显示意义
+                    peak = max(store)
+                    store.clear()
+                    db = 20.0 * np.log10((peak + 1.0) / 32767.0)
+                    percent = int(max(0.0, min(100.0, (db + 60.0) / 60.0 * 100.0)))
+                    self.level_changed.emit(percent, int(peak))
+        except Exception:
+            logger.exception("Mic level monitor failed")
+            self.level_changed.emit(-1, 0)
+        finally:
+            if stream is not None:
+                try:
+                    stream.stop()
+                    stream.close()
+                except Exception:
+                    pass
 
 
 class SettingsPanel(QWidget):
@@ -178,6 +258,30 @@ class SettingsPanel(QWidget):
         wake_layout.addWidget(self._wake_words_input)
         commands_layout.addLayout(wake_layout)
 
+        # 麦克风选择 + 实时电平（防「选了麦还是没声音」的无提示状态）
+        mic_row = QHBoxLayout()
+        mic_row.addWidget(QLabel("麦克风:"))
+        self._mic_combo = QComboBox()
+        self._mic_combo.setMinimumWidth(220)
+        mic_row.addWidget(self._mic_combo, 1)
+        self._mic_test_btn = QPushButton("测试")
+        self._mic_test_btn.setCheckable(True)
+        self._mic_test_btn.clicked.connect(self._on_toggle_mic_monitor)
+        mic_row.addWidget(self._mic_test_btn)
+        commands_layout.addLayout(mic_row)
+
+        level_row = QHBoxLayout()
+        self._mic_level_bar = QProgressBar()
+        self._mic_level_bar.setRange(0, 100)
+        self._mic_level_bar.setMaximumHeight(14)
+        self._mic_level_bar.setTextVisible(False)
+        level_row.addWidget(self._mic_level_bar, 1)
+        self._mic_level_label = QLabel("")
+        self._mic_level_label.setStyleSheet("color: #888; font-size: 11px;")
+        level_row.addWidget(self._mic_level_label)
+        commands_layout.addLayout(level_row)
+        self._mic_monitor = None
+
         # 指令列表
         self._commands_list = QListWidget()
         self._commands_list.setMaximumHeight(120)
@@ -276,6 +380,64 @@ class SettingsPanel(QWidget):
         dlg._agree_check.setVisible(False)
         dlg._exit_btn.setText("关闭")
         dlg.exec()
+
+    def _refresh_mic_devices(self, selected: str = ""):
+        """填充麦克风下拉框；selected 为当前配置的设备名。"""
+        self._mic_combo.clear()
+        self._mic_combo.addItem("(系统默认)", "")
+        for dev in input_devices():
+            label = "%s (%dch)" % (dev["name"], dev["channels"])
+            self._mic_combo.addItem(label, dev["name"])
+
+        # 配置里存的设备不在当前列表时也补一项，保存后不会悄悄丢配置
+        if selected and not any(
+            self._mic_combo.itemData(i) == selected
+            for i in range(self._mic_combo.count())
+        ):
+            self._mic_combo.addItem("%s (未找到)" % selected, selected)
+
+        idx = self._mic_combo.findData(selected)
+        self._mic_combo.setCurrentIndex(idx if idx >= 0 else 0)
+
+    def _on_toggle_mic_monitor(self, checked: bool):
+        """测试麦克风电平：开监听线程 / 停线程。"""
+        if checked:
+            self._stop_mic_monitor()
+            device_name = self._mic_combo.currentData()
+            device = resolve_input_device(device_name)
+            self._mic_monitor = MicLevelMonitor(device=device, parent=self)
+            self._mic_monitor.level_changed.connect(self._on_mic_level)
+            self._mic_monitor.finished.connect(
+                lambda: self._on_mic_monitor_done()
+            )
+            self._mic_level_bar.setValue(0)
+            self._mic_level_label.setText("监听中…")
+            self._mic_monitor.start()
+        else:
+            self._stop_mic_monitor()
+
+    def _on_mic_level(self, percent: int, rms: int):
+        if percent < 0:
+            self._mic_level_label.setText("无法打开麦克风")
+            return
+        self._mic_level_bar.setValue(percent)
+        if rms >= 400:
+            self._mic_level_label.setText("电平: %d%% (有声音)" % percent)
+        else:
+            self._mic_level_label.setText("电平: %d%% (静音)" % percent)
+
+    def _on_mic_monitor_done(self):
+        if self._mic_test_btn.isChecked():
+            self._mic_test_btn.setChecked(False)
+        self._mic_monitor = None
+
+    def _stop_mic_monitor(self):
+        if self._mic_monitor is not None:
+            monitor = self._mic_monitor
+            monitor.stop()
+            # 监听循环每 200ms 检查一次停止标志，正常很快退出
+            monitor.wait(2000)
+            self._mic_monitor = None
 
     def _add_command(self):
         """添加新指令。使用单个表单对话框，避免多步弹窗导致漏选动作。"""
@@ -458,6 +620,11 @@ class SettingsPanel(QWidget):
             )
             self._wake_words_input.setText(", ".join(wake_words))
 
+            # 加载麦克风选择
+            self._refresh_mic_devices(
+                self._current.get("voice.input_device") or ""
+            )
+
             # 加载云端 Key（assemblyai.api_key 优先，回落到顶层 voice.api_key）
             self._api_key_input.setText(
                 self._current.get("voice.assemblyai.api_key")
@@ -503,6 +670,11 @@ class SettingsPanel(QWidget):
         wake_words = [w.strip() for w in wake_text.split(",") if w.strip()]
         self._config.set("voice.commands.wake_words", wake_words)
 
+        # 保存麦克风选择（存设备名，端口/索引漂移不影响匹配）
+        mic_name = self._mic_combo.currentData()
+        mic_was = self._initial.get("voice.input_device") or ""
+        self._config.set("voice.input_device", mic_name or None)
+
         # 保存自定义指令
         commands = self._current.get("voice.commands.custom", [])
         self._config.set("voice.commands.custom", commands)
@@ -517,9 +689,10 @@ class SettingsPanel(QWidget):
                 self,
                 "保存失败",
                 "无法写入配置文件。\n\n"
-                "程序目录可能不可写（例如被放在 C:\\Program Files 下）。\n"
-                "请把程序移到有写入权限的目录（例如 D:\\ 下的任意文件夹）"
-                "后重试。\n\n"
+                "设置保存在用户目录下：\n"
+                "%APPDATA%\\GBC Nina\\config\\user.json\n\n"
+                "请检查该目录是否有写入权限；也可以在系统环境变量\n"
+                "GBC_NINA_HOME 中指定一个可写的目录作为数据位置。\n\n"
                 "详细信息见 logs 目录下的日志文件。",
             )
             return
@@ -527,8 +700,8 @@ class SettingsPanel(QWidget):
         self._initial = self._current.copy()
         self._dirty = False
 
-        # 语音开关变化需要重启才生效（麦克风与 Provider 在 start() 时创建），
-        # 这里明确告知，避免用户以为保存后立刻生效
+        # 语音开关/麦克风变化都需要重启才生效（麦克风与 Provider 在
+        # start() 时创建），这里明确告知，避免用户以为保存后立刻生效
         if self._current.get("voice.enabled") and not voice_was_enabled:
             QMessageBox.information(
                 self,
@@ -536,6 +709,14 @@ class SettingsPanel(QWidget):
                 "语音开关已保存，但需要重启 Nina 才会生效。\n\n"
                 "麦克风与语音引擎在程序启动时初始化，"
                 "如需立即启用请退出后重新运行。",
+            )
+        elif (mic_name or "") != mic_was:
+            QMessageBox.information(
+                self,
+                "麦克风已更改",
+                "麦克风设置已保存，但需要重启 Nina 才会生效。\n\n"
+                "语音采集在程序启动时初始化，"
+                "如需立即切换请退出后重新运行。",
             )
 
         self.settings_changed.emit()
@@ -594,6 +775,7 @@ class SettingsPanel(QWidget):
         # 重置唤醒词和指令
         self._wake_words_input.setText(", ".join(defaults["voice.commands.wake_words"]))
         self._refresh_commands_list()
+        self._mic_combo.setCurrentIndex(0)
 
         self._size_label.setText(f"{self._size_slider.value()}%")
         self._opacity_label.setText(f"{self._opacity_slider.value()}%")
@@ -604,6 +786,7 @@ class SettingsPanel(QWidget):
 
     def closeEvent(self, event):
         """关闭窗口时，如果未保存则恢复初始设置"""
+        self._stop_mic_monitor()
         if self._dirty:
             # 恢复到打开时的状态
             self._current = self._initial.copy()

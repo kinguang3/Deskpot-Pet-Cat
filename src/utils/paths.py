@@ -23,6 +23,7 @@
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 from src.utils.logger import get_logger
@@ -47,8 +48,32 @@ def app_base_dir() -> Path:
 
 
 def portable_mode() -> bool:
-    """是否启用便携模式（数据写在程序目录旁）。"""
-    return (app_base_dir() / PORTABLE_MARKER).exists()
+    """是否启用便携模式（数据写在程序目录旁）。
+
+    标记文件放在 exe 同级（安装器的便携模式选项也写在那里）。注意
+    ``app_base_dir()`` 在冻结包里指向 ``_internal/``，而 portable.txt 在
+    exe 旁边，二者不同目录 —— 必须都要检查。
+    """
+    for base in _portable_candidates():
+        if (base / PORTABLE_MARKER).exists():
+            return True
+    return False
+
+
+def _portable_candidates() -> list[Path]:
+    """便携标记可能存在的目录：exe 同级优先，其次 _internal/（源码根）。"""
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        return [exe_dir, app_base_dir()]
+    return [app_base_dir()]
+
+
+def portable_data_base() -> Path:
+    """便携模式下用户数据落在哪个目录（与 portable.txt 放在同一层）。"""
+    for base in _portable_candidates():
+        if (base / PORTABLE_MARKER).exists():
+            return base
+    return app_base_dir()
 
 
 def user_data_dir() -> Path:
@@ -66,7 +91,7 @@ def user_data_dir() -> Path:
     if override:
         base = Path(override).expanduser()
     elif portable_mode():
-        base = app_base_dir() / "data_portable"
+        base = portable_data_base() / "data_portable"
     else:
         appdata = os.environ.get("APPDATA")
         if appdata:
@@ -151,6 +176,47 @@ def log_dir() -> Path:
 def temp_path() -> Path:
     """语音推理的临时 WAV 目录。"""
     return user_data_dir() / "temp"
+
+
+def legacy_data_dir() -> Path:
+    """旧版本把 data/（互动记忆等）写在安装目录下。"""
+    return app_base_dir() / "data"
+
+
+def migrate_legacy_user_data() -> bool:
+    """把旧版写在安装目录 data/ 下的用户文件迁移到用户数据目录。
+
+    只复制目标不存在的文件（目标优先，绝不覆盖）。
+    幂等，可安全重复调用。返回是否迁移了任何文件。
+    """
+    legacy = legacy_data_dir()
+    if not legacy.is_dir():
+        return False
+
+    target = data_path()
+    moved = 0
+    try:
+        for src in sorted(legacy.iterdir()):
+            if not src.is_file():
+                continue
+            dst = target / src.name
+            if dst.exists():
+                continue
+            ensure_dir(target)
+            shutil.copy2(src, dst)
+            moved += 1
+    except OSError:
+        logger.warning("Failed to migrate legacy user data", exc_info=True)
+        return False
+
+    if moved:
+        logger.info(
+            "Migrated %d legacy data file(s) from %s to %s",
+            moved,
+            legacy,
+            target,
+        )
+    return moved > 0
 
 
 def migrate_legacy_user_config() -> bool:
