@@ -10,7 +10,7 @@
 import os
 import random
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import QTimer, QObject, QEvent, Qt
+from PySide6.QtCore import QTimer, QObject, QEvent
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus

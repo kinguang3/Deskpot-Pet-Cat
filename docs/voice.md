@@ -86,6 +86,7 @@ Provider 依赖 16kHz 输入，`VoiceManager.start()` 会在采集启动后校�
   "provider": "hybrid",
   "api_key": "",
   "language": "zh",
+  "input_device": null,
   "sample_rate": 16000,
   "channels": 1,
   "min_confidence": 0.5,
@@ -140,9 +141,20 @@ Provider 依赖 16kHz 输入，`VoiceManager.start()` 会在采集启动后校�
 | `sensevoice.language` | 固定语种（`zh` / `en` / `yue` / `ja` / `ko`），`auto` 为自动检测 |
 | `hybrid.allow_partial_provider` | 是否允许单 Provider 降级运行 |
 | `hybrid.max_workers` | Hybrid 调用子 Provider 的线程池大小（限制并发调用数上限；当前为串行策略，该值不再是"并行跑两个 Provider"） |
-| `hybrid.max_workers` | Hybrid 并行调用子 Provider 的线程数 |
+| `input_device` | 指定输入麦克风（存设备名，重启不漂移）；`null` 表示系统默认。设置页也提供下拉框选择与实时电平测试 |
 
 AssemblyAI 的 Key 也可以通过环境变量 `ASSEMBLYAI_API_KEY` 提供。
+
+### 麦克风选择与多声道下混
+
+- 设置 → 语音指令 →「麦克风」下拉框列出系统全部输入设备（含声道数），
+  选择后点击「测试」可实时查看电平；保存后写入 `voice.input_device`，
+  需重启生效。
+- 设备名而非索引保存，拔插/重启后按名称重新解析，不会因 PortAudio
+  索引漂移而错选。
+- 所选设备为多声道（如笔记本用的麦克风阵列）时，采集自动下混为单声道
+  再送分段与 ASR；否则按单声道打开阵列可能只拿到静音的第 0 声道，
+  「有麦却录不进」就是这么来的。
 
 ## 六、情绪映射
 
@@ -151,6 +163,17 @@ AssemblyAI 的 Key 也可以通过环境变量 `ASSEMBLYAI_API_KEY` 提供。
 未提及的键保持不变，因此可以只覆写需要的几项。
 
 ## 七、排障
+
+<details>
+<summary><b>麦克风没有反应 / 录不到声音（配了麦却静音）</b></summary>
+
+- 打开 设置 → 语音指令 →「麦克风」，选一个设备点「测试」：电平条不动
+  说明该设备当前采集不到信号（可能是单声道打开多声道阵列、或被系统设为
+  静音）；选择电平有反应的设备并重启；
+- 若可用麦克风只在多声道下输出信号，见上文「多声道下混」说明；
+- 常见系统问题：默认输入设备被静音、隐私设置禁止麦克风、
+  USB 麦克风接触不良未识别。
+</details>
 
 <details>
 <summary><b>语音模块没有启动</b></summary>

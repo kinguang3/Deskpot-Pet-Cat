@@ -8,7 +8,6 @@
 - Custom commands: 匹配用户自定义指令并执行相应动作
 """
 
-import re
 import time
 from datetime import datetime
 from typing import Optional, Callable
