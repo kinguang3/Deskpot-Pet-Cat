@@ -6,7 +6,7 @@
 管理 Nina 的位置、朝向、状态，以及与窗口和动画的协调。
 """
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Qt
 
 from src.core.event_bus import EventBus
 from src.core.window import PetWindow
@@ -91,10 +91,12 @@ class Pet(QObject):
 
     def _on_mouse_pressed(self, data: dict):
         """响应鼠标点击。"""
+        # 必须和枚举比较：和 int 比较在 PySide6 6.x 恒为 False，
+        # 会导致左右键全部识别不出来（详见 interaction/mouse.py 同源问题）
         button = data.get("button")
-        if button == 1:  # 左键
+        if button == Qt.MouseButton.LeftButton:
             self._event_bus.emit("pet.clicked", {"button": "left"})
-        elif button == 2:  # 右键
+        elif button == Qt.MouseButton.RightButton:
             self._event_bus.emit("pet.clicked", {"button": "right"})
 
     def _on_double_clicked(self, data: dict):

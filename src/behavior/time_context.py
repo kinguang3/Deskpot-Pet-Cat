@@ -90,10 +90,15 @@ class TimeContext:
     @property
     def period_name(self) -> str:
         """当前时段名称。"""
+        self._update()
         return self._current_period.value
 
     def _update(self):
-        """更新当前时段。"""
+        """更新当前时段。
+
+        必须每次取值前调用：构造时的时段会被永久冻结（实例常驻进程，
+        跨时段不刷新相当于整天用同一套权重）。
+        """
         hour = datetime.now().hour
 
         if 5 <= hour < 9:
@@ -120,11 +125,13 @@ class TimeContext:
         Returns:
             修正系数（>1.0 增加, <1.0 减少）
         """
+        self._update()
         modifiers = TIME_MODIFIERS.get(self._current_period, {})
         return modifiers.get(behavior, 1.0)
 
     def get_all_modifiers(self) -> dict[str, float]:
         """获取当前时段所有行为的修正系数。"""
+        self._update()
         return dict(TIME_MODIFIERS.get(self._current_period, {}))
 
     def get_debug_info(self) -> dict:

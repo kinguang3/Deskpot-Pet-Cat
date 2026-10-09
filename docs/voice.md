@@ -78,11 +78,12 @@ Provider 依赖 16kHz 输入，`VoiceManager.start()` 会在采集启动后校�
 
 ## 五、配置
 
-以下片段与 `config/default.json` 保持一致：
+以下片段与 `config/default.json` 保持一致（自 v0.1.1 起 `enabled` 默认
+`false`，需用户主动开启）：
 
 ```json
 "voice": {
-  "enabled": true,
+  "enabled": false,
   "provider": "hybrid",
   "api_key": "",
   "language": "zh",
@@ -112,7 +113,7 @@ Provider 依赖 16kHz 输入，`VoiceManager.start()` 会在采集启动后校�
   "segment_silence_rms_threshold": 400,
   "assemblyai": {
     "api_key": "",
-    "language": "en",
+    "language": "zh",
     "timeout": 60
   },
   "sensevoice": {
@@ -136,7 +137,7 @@ Provider 依赖 16kHz 输入，`VoiceManager.start()` 会在采集启动后校�
 | --- | --- |
 | `provider` | `assemblyai` / `sensevoice` / `hybrid` |
 | `assemblyai.api_key` | AssemblyAI API Key，留空时自动降级到 SenseVoice |
-| `assemblyai.language` | AssemblyAI 语种，英语情绪分析需为 `en` |
+| `assemblyai.language` | AssemblyAI 转录语种。默认 `zh`（中文转写准确）；注意 AssemblyAI 的**情绪分析仅支持英语**，默认配置下情绪结果恒为 `UNKNOWN`——这是已知限制，不是 bug。想启用情绪分析需改配 `en`（中文转写质量会下降） |
 | `sensevoice.n_threads` | 本地推理线程数，通过 `-t` 透传给二进制 |
 | `sensevoice.language` | 固定语种（`zh` / `en` / `yue` / `ja` / `ko`），`auto` 为自动检测 |
 | `hybrid.allow_partial_provider` | 是否允许单 Provider 降级运行 |

@@ -351,7 +351,11 @@ class SettingsPanel(QWidget):
     def _on_voice_enabled_changed(self, state):
         """语音总开关。麦克风开闭影响较大，打开时再确认一次。"""
         enabled = bool(state)
-        if enabled:
+        # _load_settings 会程序化 setChecked()，同样会触发本回调。
+        # 那种情况下不能再弹「确定要开启」：否则每次打开设置面板都会被
+        # 拦一次确认框（语音开启状态下尤其烦人）。_apply_preview 内部
+        # 也有 _updating 守卫，这里只拦住确认弹窗。
+        if enabled and not self._updating:
             reply = QMessageBox.question(
                 self,
                 "开启语音功能",

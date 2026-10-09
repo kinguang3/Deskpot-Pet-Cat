@@ -460,8 +460,12 @@ class App(QObject):
         self._behavior_controller.on_drag_start()
 
     def _on_state_changed(self, data: dict):
-        """状态变化回调。"""
-        new = data.get("to", "")
+        """状态变化回调。
+
+        其他模块（BehaviorController / EmotionSystem）各自监听该事件，
+        这里只保留订阅占位，避免误删注册关系。
+        """
+        return
 
     def _on_voice_emotion(self, data: dict):
         """处理语音情绪检测结果。"""
