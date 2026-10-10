@@ -56,16 +56,11 @@ class StateMachine(QObject):
         self._event_bus = EventBus()
         self._states: dict[str, State] = {}
         self._current: State = None
-        self._previous_name: str = ""
         logger.debug("StateMachine initialized")
 
     @property
     def current_state_name(self) -> str:
         return self._current.name if self._current else ""
-
-    @property
-    def previous_state_name(self) -> str:
-        return self._previous_name
 
     def add_state(self, state: State):
         """注册一个状态。"""
@@ -110,7 +105,6 @@ class StateMachine(QObject):
         if self._current:
             self._current.exit()
 
-        self._previous_name = old_name
         self._current = target
         self._current.enter()
 

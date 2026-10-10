@@ -4,7 +4,7 @@
 """事件总线模块
 
 模块间通过事件通信，避免直接引用。
-支持事件发送、监听、一次性监听。
+支持事件发送、监听。
 跨线程安全：子线程 emit 的事件通过队列 + QTimer 调度到主线程执行。
 """
 
@@ -38,7 +38,6 @@ class EventBus(QObject):
         super().__init__()
         self._initialized = True
         self._listeners: dict[str, list[Callable]] = defaultdict(list)
-        self._once_listeners: dict[str, list[Callable]] = defaultdict(list)
         self._pending: queue.Queue = queue.Queue()
 
         # 主线程定时器，每 10ms 检查队列
@@ -51,21 +50,6 @@ class EventBus(QObject):
     def on(self, event: str, callback: Callable):
         """监听事件。"""
         self._listeners[event].append(callback)
-
-    def once(self, event: str, callback: Callable):
-        """一次性监听事件。触发后自动移除。"""
-        self._once_listeners[event].append(callback)
-
-    def off(self, event: str, callback: Callable = None):
-        """取消监听。"""
-        if callback is None:
-            self._listeners[event].clear()
-            self._once_listeners[event].clear()
-        else:
-            if callback in self._listeners[event]:
-                self._listeners[event].remove(callback)
-            if callback in self._once_listeners[event]:
-                self._once_listeners[event].remove(callback)
 
     def emit(self, event: str, data: dict = None):
         """发送事件。
@@ -99,10 +83,3 @@ class EventBus(QObject):
                 callback(data)
             except Exception:
                 logger.exception("Error in listener for '%s'", event)
-
-        for callback in self._once_listeners[event]:
-            try:
-                callback(data)
-            except Exception:
-                logger.exception("Error in once-listener for '%s'", event)
-        self._once_listeners[event].clear()

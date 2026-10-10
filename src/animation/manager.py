@@ -59,12 +59,6 @@ class AnimationManager(QObject):
             return self._frames[self._current_frame]
         return QPixmap()
 
-    @property
-    def frame_size(self) -> tuple[int, int]:
-        if self._frames:
-            return (self._frames[0].width(), self._frames[0].height())
-        return (0, 0)
-
     def play(self, animation_name: str, loop: bool = True):
         """播放指定动画。
 
@@ -120,24 +114,6 @@ class AnimationManager(QObject):
                     "animation": self._current_animation,
                 },
             )
-
-    def pause(self):
-        """暂停动画。"""
-        if self._playing:
-            self._timer.stop()
-            logger.debug("Animation paused: %s", self._current_animation)
-
-    def resume(self):
-        """恢复动画。"""
-        if self._playing and self._frames:
-            self._timer.start(1000 // self._fps)
-            logger.debug("Animation resumed: %s", self._current_animation)
-
-    def set_fps(self, fps: int):
-        """动态修改帧率。"""
-        self._fps = max(1, fps)
-        if self._playing:
-            self._timer.setInterval(1000 // self._fps)
 
     def _on_tick(self):
         """定时器回调，切换到下一帧。"""

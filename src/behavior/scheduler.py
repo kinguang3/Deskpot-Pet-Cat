@@ -226,16 +226,6 @@ class BehaviorScheduler:
         elapsed = time.time() - self._last_run[behavior]
         return elapsed < self._cooldowns[behavior]
 
-    def get_cooldown_remaining(self, behavior: str) -> float:
-        """获取行为剩余冷却时间（秒）。"""
-        if behavior not in self._cooldowns:
-            return 0.0
-        if behavior not in self._last_run:
-            return 0.0
-        elapsed = time.time() - self._last_run[behavior]
-        remaining = self._cooldowns[behavior] - elapsed
-        return max(0.0, remaining)
-
     # ─── 行为历史 ───
 
     def _record_history(self, behavior: str):
@@ -243,17 +233,3 @@ class BehaviorScheduler:
         self._history.append(behavior)
         if len(self._history) > self._history_max:
             self._history = self._history[-self._history_max:]
-
-    def get_history(self) -> list[str]:
-        """获取最近行为历史。"""
-        return list(self._history)
-
-    @property
-    def time_context(self) -> TimeContext:
-        """获取时间上下文。"""
-        return self._time_context
-
-    def get_weights_debug(self) -> dict[str, float]:
-        """获取当前权重（调试用）。"""
-        self._calculate_weights()
-        return {k: round(v, 1) for k, v in self._current_weights.items() if v > 0}

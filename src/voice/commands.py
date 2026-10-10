@@ -260,45 +260,6 @@ class CommandManager:
             len(self._commands),
         )
 
-    def get_wake_words(self) -> list[str]:
-        """获取唤醒词列表。"""
-        return self._wake_words.copy()
-
-    def set_wake_words(self, words: list[str]):
-        """设置唤醒词列表。"""
-        self._wake_words = words
-        self._config.set("voice.commands.wake_words", words)
-        logger.info("Wake words updated: %s", words)
-
-    def get_commands(self) -> list[dict]:
-        """获取自定义指令列表。"""
-        return self._commands.copy()
-
-    def add_command(self, trigger: str, action: str, description: str = ""):
-        """添加自定义指令。"""
-        cmd = {
-            "trigger": trigger,
-            "action": action,
-            "description": description,
-        }
-        self._commands.append(cmd)
-        self._config.set("voice.commands.custom", self._commands)
-        logger.info("Command added: %s -> %s", trigger, action)
-
-    def remove_command(self, trigger: str):
-        """删除自定义指令。"""
-        self._commands = [
-            cmd for cmd in self._commands if cmd.get("trigger") != trigger
-        ]
-        self._config.set("voice.commands.custom", self._commands)
-        logger.info("Command removed: %s", trigger)
-
-    def clear_commands(self):
-        """清空所有自定义指令。"""
-        self._commands.clear()
-        self._config.set("voice.commands.custom", self._commands)
-        logger.info("All commands cleared")
-
     # ─── 状态管理 ───
 
     def is_listening(self) -> bool:
@@ -390,14 +351,3 @@ class CommandManager:
                 remaining = text[idx + len(wake_word):].strip()
                 return remaining
         return text
-
-    # ─── 调试 ───
-
-    def get_debug_info(self) -> dict:
-        """获取调试信息。"""
-        return {
-            "wake_words": self._wake_words,
-            "commands_count": len(self._commands),
-            "is_listening": self._is_listening,
-            "actions_registered": list(self._action_handlers.keys()),
-        }

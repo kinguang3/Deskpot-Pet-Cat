@@ -82,10 +82,6 @@ class SystemTray(QObject):
         self._tray.hide()
         logger.debug("Tray icon hidden")
 
-    def show_message(self, title: str, message: str):
-        """显示托盘通知。"""
-        self._tray.showMessage(title, message)
-
     def _on_activated(self, reason):
         """处理托盘图标点击。"""
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:

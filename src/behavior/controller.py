@@ -291,13 +291,3 @@ class BehaviorController(QObject):
             self._sm.transition_to("idle")
 
         self._sm.transition_to("dragged")
-
-    def get_debug_info(self) -> dict:
-        """获取调试信息。"""
-        return {
-            "state": self._sm.current_state_name,
-            "seconds_since_interact": round(self.seconds_since_interact, 1),
-            "auto_sleep_timeout": self._auto_sleep_timeout,
-            "scheduler_weights": self._scheduler.get_weights_debug(),
-            "scheduler_history": self._scheduler.get_history(),
-        }

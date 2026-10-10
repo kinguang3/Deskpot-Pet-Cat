@@ -80,11 +80,6 @@ class ConfigManager:
         else:
             logger.debug("No user config found, using defaults")
 
-    def reload(self):
-        """重新从磁盘加载配置，丢弃当前内存中的数据"""
-        self._load()
-        logger.info("Config reloaded")
-
     def _load_json(self, path: Path) -> dict:
         try:
             with open(path, "r", encoding="utf-8") as f:

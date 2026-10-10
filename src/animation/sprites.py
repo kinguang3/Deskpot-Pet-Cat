@@ -19,17 +19,8 @@ ANIMATION_MAP = {
     "walk_left": "cat_walk_left",
     "walk_right": "cat_walk_right",
     "typing": "cat_typing",
-    "typing_red": "cat_typing_red",
     "watching": "cat_watching",
     "sleep": "cat_sleep",
-}
-
-# 单帧图片（非动画）
-SINGLE_FRAME_MAP = {
-    "tall": "cat_tall",
-    "long": "cat_long",
-    "melt": "cat_melt",
-    "glitch": "cat_glitch",
 }
 
 
@@ -43,8 +34,6 @@ class SpriteLoader:
             )
         self._assets_dir = Path(assets_dir)
         self._cache: dict[str, list[QPixmap]] = {}
-        self._single_cache: dict[str, QPixmap] = {}
-        self._frame_size: dict[str, tuple[int, int]] = {}
         logger.debug("SpriteLoader initialized (dir: %s)", self._assets_dir)
 
     def load_animation(self, name: str) -> list[QPixmap]:
@@ -75,49 +64,5 @@ class SpriteLoader:
 
         if frames:
             self._cache[name] = frames
-            w, h = frames[0].width(), frames[0].height()
-            self._frame_size[name] = (w, h)
 
         return frames
-
-    def load_single(self, name: str) -> QPixmap:
-        """加载单帧图片。
-
-        Args:
-            name: 图片名称，如 "tall", "melt"
-        """
-        if name in self._single_cache:
-            return self._single_cache[name]
-
-        prefix = SINGLE_FRAME_MAP.get(name)
-        if prefix is None:
-            logger.warning("Unknown single frame: %s", name)
-            return QPixmap()
-
-        file_path = self._assets_dir / f"{prefix}.png"
-        if not file_path.exists():
-            logger.warning("File not found: %s", file_path)
-            return QPixmap()
-
-        pixmap = QPixmap(str(file_path))
-        if not pixmap.isNull():
-            self._single_cache[name] = pixmap
-            logger.debug("Loaded single frame '%s'", name)
-
-        return pixmap
-
-    def get_frame_size(self, name: str) -> tuple[int, int]:
-        """获取动画的帧尺寸。"""
-        if name in self._frame_size:
-            return self._frame_size[name]
-
-        self.load_animation(name)
-        return self._frame_size.get(name, (0, 0))
-
-    def load_all(self):
-        """预加载所有动画。"""
-        for name in ANIMATION_MAP:
-            self.load_animation(name)
-        for name in SINGLE_FRAME_MAP:
-            self.load_single(name)
-        logger.info("All sprites preloaded")

@@ -183,7 +183,3 @@ class VoiceOptInDialog(QDialog):
         btn_layout.addWidget(self._on_btn)
 
         layout.addLayout(btn_layout)
-
-    @property
-    def wants_voice(self) -> bool:
-        return self.result() == QDialog.DialogCode.Accepted

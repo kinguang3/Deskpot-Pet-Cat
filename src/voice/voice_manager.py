@@ -18,7 +18,7 @@ AudioCapture -> AudioSegmenter -> Provider -> EmotionParser -> EventBus
 import concurrent.futures
 import threading
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject
 
 from src.core.config import ConfigManager
 from src.core.event_bus import EventBus
@@ -36,8 +36,6 @@ TARGET_SAMPLE_RATE = 16000
 
 class VoiceManager(QObject):
     """语音情绪识别生命周期管理"""
-
-    state_changed = Signal(bool)  # True=running, False=stopped
 
     # 并发分析上限：超过则丢弃新 segment，避免 CPU 打满
     # AssemblyAI 轮询耗时较长（30~60s/segment），4 不够用会导致频繁丢弃
@@ -143,7 +141,6 @@ class VoiceManager(QObject):
             return False
 
         self._running = True
-        self.state_changed.emit(True)
         logger.info(
             "VoiceManager started (provider=%s, %dHz)",
             provider_name,
@@ -179,7 +176,6 @@ class VoiceManager(QObject):
             self._pending_futures.clear()
 
         self._cleanup(close_provider=True)
-        self.state_changed.emit(False)
 
         if stuck:
             logger.warning(
@@ -194,28 +190,6 @@ class VoiceManager(QObject):
     def _pending_analyze_count(self) -> int:
         with self._futures_lock:
             return len(self._pending_futures)
-
-    def pause(self):
-        if self._capture and self._capture.is_running:
-            self._capture.stop()
-            # 清空分段缓冲，避免恢复后残留音频与新音频拼接
-            if self._segmenter:
-                self._segmenter.reset()
-            logger.debug("VoiceManager paused")
-
-    def resume(self):
-        if self._running and self._capture and not self._capture.is_running:
-            if self._capture.start():
-                logger.debug("VoiceManager resumed")
-            else:
-                # 不能无条件报 resumed：麦克风被占用/设备消失时采集会失败，
-                # 宠物仍显示运行中但实际收不到任何音频
-                logger.error("麦克风恢复采集失败，语音输入已中断")
-                self.state_changed.emit(False)
-                self._running = False
-
-    def is_running(self) -> bool:
-        return self._running
 
     # 内部
 
@@ -521,19 +495,6 @@ class VoiceManager(QObject):
             self._provider = None
         self._capture = None
         self._segmenter = None
-
-    def get_debug_info(self) -> dict:
-        return {
-            "running": self._running,
-            "provider": self._provider.name if self._provider else None,
-            "provider_ready": (
-                self._provider.is_ready() if self._provider else False
-            ),
-            "max_concurrent_analyze": getattr(
-                self, "_max_concurrent", self.MAX_CONCURRENT_ANALYZE
-            ),
-            "command_manager": self._command_manager.get_debug_info(),
-        }
 
     def get_command_manager(self):
         """获取指令管理器。"""

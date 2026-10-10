@@ -67,28 +67,6 @@ class EmotionSystem(QObject):
 
         logger.debug("EmotionSystem initialized")
 
-    # ─── 属性 ───
-
-    @property
-    def energy(self) -> float:
-        return self._energy
-
-    @property
-    def happiness(self) -> float:
-        return self._happiness
-
-    @property
-    def curiosity(self) -> float:
-        return self._curiosity
-
-    @property
-    def sleepiness(self) -> float:
-        return self._sleepiness
-
-    @property
-    def affection(self) -> float:
-        return self._affection
-
     # ─── 生命周期 ───
 
     def start(self):
@@ -102,7 +80,6 @@ class EmotionSystem(QObject):
         self._update_timer.stop()
 
     # ─── 核心更新 ───
-
     def _on_update(self):
         """定时更新情感值。"""
         # 自然衰减：所有情感缓慢向中间值回归
@@ -184,16 +161,6 @@ class EmotionSystem(QObject):
             self._happiness,
         )
 
-    def on_long_inactive(self):
-        """长时间无互动 → 快乐下降，困倦上升"""
-        self._happiness = max(0, self._happiness - 2)
-        self._sleepiness = min(100, self._sleepiness + 5)
-        logger.debug(
-            "Emotion: long inactive -> happiness=%.1f, sleepiness=%.1f",
-            self._happiness,
-            self._sleepiness,
-        )
-
     def on_voice_emotion(self, emotion: str, sentiment: str, energy: float):
         """语音情绪影响内部情感状态。
 
@@ -234,10 +201,6 @@ class EmotionSystem(QObject):
         else:
             # NEUTRAL → 轻微增加好奇心
             self._curiosity = min(100, self._curiosity + 0.5)
-
-    def on_walk_complete(self):
-        """行走完成 → 好奇心满足"""
-        self._curiosity = max(0, self._curiosity - 2)
 
     # ─── 调试 ───
 

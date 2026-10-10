@@ -107,14 +107,6 @@ class AudioCapture:
         self._callback = callback
 
     @property
-    def is_running(self) -> bool:
-        return self._running
-
-    @property
-    def sample_rate(self) -> int:
-        return self._sample_rate
-
-    @property
     def actual_sample_rate(self):
         """实际生效的采样率（由 sounddevice 返回），未启动时为 None"""
         return self._actual_sample_rate
@@ -226,15 +218,6 @@ class AudioCapture:
                 stream.close()
             except Exception:
                 logger.warning("Audio stream close() failed", exc_info=True)
-
-    def list_devices(self):
-        """返回可用输入设备列表，方便选择 device"""
-        try:
-            import sounddevice as sd
-        except ImportError:
-            logger.error("sounddevice not installed.")
-            return []
-        return sd.query_devices()
 
     def _on_audio(self, indata, frames, time_info, status):
         # 注：签名中参数不得修改

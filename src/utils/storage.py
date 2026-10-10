@@ -11,7 +11,6 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any
 
 from src.utils.logger import get_logger
 from src.utils import paths
@@ -60,11 +59,6 @@ class Storage:
             self._data_dir,
             self._available,
         )
-
-    @property
-    def available(self) -> bool:
-        """数据目录是否可用（False 表示本次运行不会持久化）。"""
-        return self._available
 
     def _get_file_path(self, name: str) -> Path:
         return self._data_dir / f"{name}.json"
@@ -159,24 +153,3 @@ class Storage:
             except OSError:
                 pass
             return False
-
-    def get(self, key: str, default=None, name: str = "pet_data") -> Any:
-        """获取单个值。"""
-        if not self._loaded:
-            self.load(name)
-        data = self._cache.get(name, {})
-        return data.get(key, default)
-
-    def set(self, key: str, value: Any, name: str = "pet_data"):
-        """设置单个值。"""
-        if not self._loaded:
-            self.load(name)
-        if name not in self._cache:
-            self._cache[name] = {}
-        self._cache[name][key] = value
-
-    def save_all(self, name: str = "pet_data"):
-        """保存所有缓存数据。"""
-        if name in self._cache:
-            return self.save(self._cache[name], name)
-        return False

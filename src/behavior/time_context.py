@@ -81,18 +81,6 @@ class TimeContext:
         self._update()
         logger.debug("TimeContext initialized (period: %s)", self._current_period.value)
 
-    @property
-    def period(self) -> TimePeriod:
-        """当前时段。"""
-        self._update()
-        return self._current_period
-
-    @property
-    def period_name(self) -> str:
-        """当前时段名称。"""
-        self._update()
-        return self._current_period.value
-
     def _update(self):
         """更新当前时段。
 
@@ -116,28 +104,7 @@ class TimeContext:
             logger.info("Time period changed: %s -> %s", self._current_period.value, new_period.value)
             self._current_period = new_period
 
-    def get_modifier(self, behavior: str) -> float:
-        """获取某行为在当前时段的修正系数。
-
-        Args:
-            behavior: 行为名称
-
-        Returns:
-            修正系数（>1.0 增加, <1.0 减少）
-        """
-        self._update()
-        modifiers = TIME_MODIFIERS.get(self._current_period, {})
-        return modifiers.get(behavior, 1.0)
-
     def get_all_modifiers(self) -> dict[str, float]:
         """获取当前时段所有行为的修正系数。"""
         self._update()
         return dict(TIME_MODIFIERS.get(self._current_period, {}))
-
-    def get_debug_info(self) -> dict:
-        """获取调试信息。"""
-        return {
-            "period": self._current_period.value,
-            "hour": datetime.now().hour,
-            "modifiers": self.get_all_modifiers(),
-        }

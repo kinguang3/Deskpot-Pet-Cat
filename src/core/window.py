@@ -8,7 +8,7 @@
 """
 
 from PySide6.QtWidgets import QMainWindow, QWidget
-from PySide6.QtCore import Qt, QPoint, Signal
+from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QPixmap, QPainter, QMouseEvent
 
 from src.core.event_bus import EventBus
@@ -26,12 +26,11 @@ class PetWindow(QMainWindow):
     - 始终置顶
     - 不在任务栏显示
     - 可拖动
-    """
 
-    # 自定义信号
-    dragged = Signal(int, int)  # 拖动结束时发出 (x, y)
-    clicked = Signal(QMouseEvent)  # 单击
-    double_clicked = Signal(QMouseEvent)  # 双击
+    鼠标事件一律经 EventBus 的 ``window.*`` 事件外发，不在窗口类上定义
+    Qt 信号：交互翻译层（interaction/mouse.py）与 Pet 都按事件名订阅，
+    再堆信号只会多一条无人连接的通道。
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -141,7 +140,6 @@ class PetWindow(QMainWindow):
             self._drag_offset = event.globalPosition().toPoint() - self.pos()
             event.accept()
 
-        self.clicked.emit(event)
         self._event_bus.emit(
             "window.mouse_pressed",
             {
@@ -170,7 +168,6 @@ class PetWindow(QMainWindow):
         """处理鼠标释放 - 结束拖动。"""
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = False
-            self.dragged.emit(self.pos().x(), self.pos().y())
             event.accept()
 
             self._event_bus.emit(
@@ -183,7 +180,6 @@ class PetWindow(QMainWindow):
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         """处理鼠标双击。"""
-        self.double_clicked.emit(event)
         self._event_bus.emit(
             "window.double_clicked",
             {

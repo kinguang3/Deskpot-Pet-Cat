@@ -50,10 +50,6 @@ class AudioSegmenter:
         self._silence_run_ms = 0.0
         self._has_speech = False
 
-    def set_callback(self, callback):
-        """callback(pcm_bytes: bytes)"""
-        self._on_segment = callback
-
     def reset(self):
         self._buffer.clear()
         self._silence_run_ms = 0.0
