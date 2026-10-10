@@ -32,7 +32,7 @@ def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # 关闭窗口不退出，靠托盘退出
     app.setApplicationName("GBC Nina")
-    app.setApplicationVersion("0.1.0")
+    app.setApplicationVersion("0.1.2")
 
     # 记录 PySide6 版本
     try:

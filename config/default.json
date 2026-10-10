@@ -1,7 +1,7 @@
 {
   "app": {
     "debug": false,
-    "version": "0.1.0",
+    "version": "0.1.2",
     "privacy_accepted": false,
     "first_run_completed": false
   },

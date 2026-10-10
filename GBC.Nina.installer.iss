@@ -1,14 +1,14 @@
 ; ============================================================================
 ;  GBC Nina 安装器脚本（Inno Setup 6）
 ;
-;  前置步骤：先用 PyInstaller 构建出 dist\GBC.Nina.v0.1.1\ 目录
-;      Remove-Item -Recurse -Force dist\GBC.Nina.v0.1.1, build
-;      .\.venv\Scripts\python.exe -m PyInstaller --noconfirm GBC.Nina.v0.1.1.spec
+;  前置步骤：先用 PyInstaller 构建出 dist\GBC.Nina.v0.1.2\ 目录
+;      Remove-Item -Recurse -Force dist\GBC.Nina.v0.1.2, build
+;      .\.venv\Scripts\python.exe -m PyInstaller --noconfirm GBC.Nina.v0.1.2.spec
 ;
 ;  编译（需先安装 Inno Setup 6.x）：
 ;      "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" GBC.Nina.installer.iss
 ;  或用 Inno Setup IDE 打开本文件后按 F9。
-;  产物：dist\installer\GBC.Nina.v0.1.1-setup.exe
+;  产物：dist\installer\GBC.Nina.v0.1.2-setup.exe
 ;
 ;  设计要点：
 ;  - 用户数据全部在 %APPDATA%\GBC Nina\，卸载默认**不删**，可由用户确认后再删
@@ -17,11 +17,11 @@
 ; ============================================================================
 
 #define AppName "GBC Nina"
-#define AppVersion "0.1.1"
+#define AppVersion "0.1.2"
 #define AppPublisher "kinguang3"
 #define AppURL "https://github.com/kinguang3/Deskpot-Pet-Cat"
-#define AppExeName "GBC.Nina.v0.1.1.exe"
-#define SourceDir "dist\GBC.Nina.v0.1.1"
+#define AppExeName "GBC.Nina.v0.1.2.exe"
+#define SourceDir "dist\GBC.Nina.v0.1.2"
 
 [Setup]
 AppId={{7C3A1F52-9B4E-4D8A-A6C1-2E5B8D0F3A47}

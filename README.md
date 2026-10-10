@@ -19,7 +19,7 @@
 
 GBC Nina 是一款轻量级 Windows 桌面宠物，基于 Python + PySide6 构建。她会陪伴你工作、学习，有自己的情绪和行为节奏——安静但好奇，偶尔主动，大部分时间自处。
 
-> **当前状态**: v0.1.1，已实现透明窗口、动画播放、自主行为、鼠标交互、对话气泡、系统托盘、设置面板、语音情绪识别（Hybrid 双 Provider）、自定义语音指令等核心功能。指令与配置持久化已改为原子写入并带备份恢复。
+> **当前状态**: v0.1.2，已实现透明窗口、动画播放、自主行为、鼠标交互、对话气泡、系统托盘、设置面板、语音情绪识别（Hybrid 双 Provider）、自定义语音指令等核心功能。指令与配置持久化已改为原子写入并带备份恢复；用户数据迁至 `%APPDATA%` 并带旧数据一次性迁移。
 
 ---
 
@@ -158,30 +158,30 @@ ASSEMBLYAI_API_KEY=your_api_key_here
 
 ### 5. 打包发布（PyInstaller）
 
-项目使用 spec 文件打包（`GBC.Nina.v0.1.1.spec`），资源目录已配好，无需手工拼 `--add-data`：
+项目使用 spec 文件打包（`GBC.Nina.v0.1.2.spec`），资源目录已配好，无需手工拼 `--add-data`：
 
 ```powershell
 # 安装 PyInstaller（用虚拟环境里的 python，不要用全局 python）
 .\.venv\Scripts\python.exe -m pip install pyinstaller
 
 # 清理旧的产物，避免上一次的残留文件混进新包
-Remove-Item -Recurse -Force dist\GBC.Nina.v0.1.1 -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force dist\GBC.Nina.v0.1.2 -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
 
 # 打包（单目录、无控制台）
-.\.venv\Scripts\python.exe -m PyInstaller --noconfirm GBC.Nina.v0.1.1.spec
+.\.venv\Scripts\python.exe -m PyInstaller --noconfirm GBC.Nina.v0.1.2.spec
 
 # 压缩发布包
-Compress-Archive -Path dist\GBC.Nina.v0.1.1 -DestinationPath dist\GBC.Nina.v0.1.1.zip -CompressionLevel Optimal
+Compress-Archive -Path dist\GBC.Nina.v0.1.2 -DestinationPath dist\GBC.Nina.v0.1.2.zip -CompressionLevel Optimal
 ```
 
-产物位于 `dist\GBC.Nina.v0.1.1\`，压缩后约 330 MB（其中 SenseVoice 模型约 280 MB，是体积主要来源）。
+产物位于 `dist\GBC.Nina.v0.1.2\`，压缩后约 330 MB（其中 SenseVoice 模型约 280 MB，是体积主要来源）。
 
 > **注意**:
 >
 > - **务必用 `.\.venv\Scripts\python.exe`**。即使执行过 `Activate.ps1`，某些环境下 `python` 仍会解析到全局解释器，导致 `No module named PyInstaller`。
 > - PyInstaller 6.x 的 `--onedir` 会把 `assets`、`bin`、`config`、`models` 放进 `_internal\` 子目录，程序已按此结构查找资源，**不需要**再手工复制到顶层。
-> - 打包前务必清理 `dist\GBC.Nina.v0.1.1\`。`--noconfirm` 不会删除旧产物，残留文件（尤其是重复的 280MB 模型）会让包体积虚增近一倍。
+> - 打包前务必清理 `dist\GBC.Nina.v0.1.2\`。`--noconfirm` 不会删除旧产物，残留文件（尤其是重复的 280MB 模型）会让包体积虚增近一倍。
 > - **spec 只收录 `config\default.json`**，不会把开发机的 `config\user.json` 打进包里。之前整目录拷贝会让所有下载用户继承开发者的个性化配置。
 
 ### 6. 生成安装器（可选，Inno Setup）
@@ -189,12 +189,12 @@ Compress-Archive -Path dist\GBC.Nina.v0.1.1 -DestinationPath dist\GBC.Nina.v0.1.
 不想让用户自己解压 zip，可以编译出 `setup.exe`，支持选择安装目录、快捷方式、开机自启和卸载：
 
 ```powershell
-# 先按上一节构建出 dist\GBC.Nina.v0.1.1\
+# 先按上一节构建出 dist\GBC.Nina.v0.1.2\
 
 # 安装 Inno Setup 6.x 后编译
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" GBC.Nina.installer.iss
 
-# 产物：dist\installer\GBC.Nina.v0.1.1-setup.exe
+# 产物：dist\installer\GBC.Nina.v0.1.2-setup.exe
 ```
 
 安装器提供以下可选项：
@@ -386,7 +386,7 @@ GBC-Nina/
 ├── main.py                        # 程序入口
 ├── run.bat                        # 一键启动（cmd）
 ├── requirements.txt               # Python 依赖
-├── GBC.Nina.v0.1.1.spec            # PyInstaller 打包配置
+├── GBC.Nina.v0.1.2.spec            # PyInstaller 打包配置
 ├── README.md                      # 项目说明文档
 │
 ├── docs/                          # 文档目录
@@ -674,15 +674,20 @@ v0.1.1 已针对延迟做过实测优化。以一句 2.6 秒的中文为例：
 </details>
 
 <details>
-<summary><b>Q8: 提示"仅支持单声道麦克风"？</b></summary>
+<summary><b>Q8: 麦克风录不到声音 / 选了麦克风还是没反应？</b></summary>
 
-v0.1.1 起，语音模块会主动校验输入声道数，多声道设备会被拒绝而不是继续用错位数据。
+先打开 **设置 → 语音指令 →「麦克风」**，逐个设备点「测试」：
 
-**解决方案**:
+- 电平条不动 = 该设备当前采集不到信号（常见原因见下）
+- 电平条有反应 = 选它，保存后重启 Nina
 
-- 换用单声道麦克风（绝大多数耳麦/桌面麦都是单声道）
-- 在 Windows「设置 → 系统 → 声音 → 输入」里把默认输入改成单声道设备
-- 蓝牙耳麦的免提模式通常是单声道，优先用它
+常见原因：
+
+- 默认输入设备被系统静音，或隐私设置禁止了麦克风
+- USB 麦克风接触不良、未被系统识别（表现为设备列表里有名字但电平恒为 0）
+- **麦克风阵列被按单声道打开**：部分笔记本的麦克风阵列只在多声道下输出信号，按单声道请求会拿到静音。v0.1.2 起已自动按设备声道采集并**下混为单声道**，不会再出现这种"有麦却录不进"。
+
+> 旧版本（≤ v0.1.1）的做法是直接拒绝多声道设备并要求用户去系统里改单声道，v0.1.2 改为自动下混，并新增设备下拉框与实时电平测试，方便确认哪一个设备真的有信号。
 
 </details>
 
@@ -711,6 +716,21 @@ v0.1.1 起，语音模块会主动校验输入声道数，多声道设备会被�
 - `config\user.json.bak` 是上一次成功保存的备份，会被自动回退加载
 - 损坏的原文件会被重命名为 `*.corrupt` 保留在原地，方便你手动检查
 - 同样适用于 `data\*.json`（情感记忆等）
+
+</details>
+
+<details>
+<summary><b>Q11: v0.1.2 修了什么？</b></summary>
+
+v0.1.2 主要是修复与体验问题，没有新增依赖：
+
+- **点击 Nina 没反应**（v0.1.1 的回归）：Qt 6.11 的 `Qt.MouseButton` 与 int 比较恒为 `False`，导致左键单击与右键完全失效，只剩双击可用。已改为枚举比较，并让双击不再同时触发单击反应。
+- **行为权重在启动时被冻结**：时段修正系数只读构造时缓存的值，导致上午启动就整天按"白天"权重。现值前刷新。
+- **每次打开设置都弹「确定开启语音」**：载入配置时的程序化勾选也走了确认框，已屏蔽。
+- **麦克风可选 + 实时电平**：设置页新增设备下拉框与"测试"按钮（0~100% 电平条），按设备名保存（重启/拔插后不漂移）；多声道麦克风阵列自动下混为单声道，不再被拒绝。
+- 便携模式标记现在同时检查 exe 目录与 `_internal\`（与安装器写入位置一致）；旧版写在安装目录 `data/` 下的用户数据会在首次启动一次性迁移，幂等且不覆盖。
+- 隐私协议与"保存失败"提示改为指向 `%APPDATA%\GBC Nina\`（v0.1.1 已把用户数据迁走，文案没跟上）。
+- 顺带清理了大量零调用死代码与 4 张从未使用的素材图，发布包体积不变。
 
 </details>
 
