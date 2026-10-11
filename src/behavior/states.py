@@ -28,7 +28,7 @@ class IdleState(State):
     """待机状态。Nina 静坐，等待行为控制器决策。"""
 
     def __init__(self):
-        super().__init__("idle", priority=0)
+        super().__init__("idle")
         self._event_bus = EventBus()
 
     def enter(self):
@@ -42,7 +42,7 @@ class WalkState(State):
     """行走状态。Nina 随机向左或向右走。"""
 
     def __init__(self):
-        super().__init__("walk", priority=1)
+        super().__init__("walk")
         self._timer = QTimer()
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)
@@ -74,7 +74,7 @@ class StopState(State):
     """停留状态。Nina 停下来张望，短暂亦留后回到 idle。"""
 
     def __init__(self):
-        super().__init__("stop", priority=1)
+        super().__init__("stop")
         self._timer = QTimer()
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)
@@ -97,7 +97,7 @@ class SleepState(State):
     """睡觉状态。Nina 进入睡眠，仅用户互动可唤醒。"""
 
     def __init__(self):
-        super().__init__("sleep", priority=3)
+        super().__init__("sleep")
 
     def enter(self):
         self._machine.anim.play("sleep", loop=True)
@@ -114,7 +114,7 @@ class WatchState(State):
     """注视状态。Nina 好奇地看着什么。"""
 
     def __init__(self):
-        super().__init__("watch", priority=1)
+        super().__init__("watch")
         self._timer = QTimer()
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)
@@ -137,7 +137,7 @@ class TypingState(State):
     """打字状态。Nina 跟随用户输入打字。"""
 
     def __init__(self):
-        super().__init__("typing", priority=2)
+        super().__init__("typing")
         self._timer = QTimer()
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)
@@ -158,7 +158,7 @@ class ClickedState(State):
     """被点击状态。Nina 被点击后有短暂反应。"""
 
     def __init__(self):
-        super().__init__("clicked", priority=4)
+        super().__init__("clicked")
         self._timer = QTimer()
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)
@@ -179,7 +179,7 @@ class DraggedState(State):
     """被拖动状态。Nina 被拖动时显示特殊动画。"""
 
     def __init__(self):
-        super().__init__("dragged", priority=5)
+        super().__init__("dragged")
 
     def enter(self):
         self._machine.anim.play("watching")
@@ -192,7 +192,7 @@ class HappyState(State):
     """开心状态。Nina 表现出开心的样子。"""
 
     def __init__(self):
-        super().__init__("happy", priority=1)
+        super().__init__("happy")
         self._timer = QTimer()
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)
@@ -213,7 +213,7 @@ class WakeState(State):
     """语音唤醒状态。Nina 被语音唤醒后的短暂反应。"""
 
     def __init__(self):
-        super().__init__("wake", priority=4)
+        super().__init__("wake")
         self._timer = QTimer()
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)

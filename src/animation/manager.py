@@ -43,7 +43,6 @@ class AnimationManager(QObject):
             "walk_left": 8,
             "walk_right": 8,
             "typing": 8,
-            "typing_red": 8,
             "watching": 6,
             "sleep": 2,
         }

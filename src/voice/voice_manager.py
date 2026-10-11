@@ -63,9 +63,6 @@ class VoiceManager(QObject):
 
         self._running = False
         self._provider_name = "assemblyai"
-        self._sample_rate = 16000
-        self._channels = 1
-
 
         logger.debug("VoiceManager initialized")
 
@@ -84,8 +81,6 @@ class VoiceManager(QObject):
         channels = self._config.get("voice.channels", 1)
 
         self._provider_name = provider_name
-        self._sample_rate = sample_rate
-        self._channels = channels
 
         if not self._build_provider(provider_name, sample_rate, channels):
             return False
@@ -243,7 +238,6 @@ class VoiceManager(QObject):
             return True
 
         # 设备回落到目标采样率：重建分段器与 Provider 以匹配
-        self._sample_rate = actual_rate
         self._create_segmenter(actual_rate, channels)
         if self._provider is not None:
             try:

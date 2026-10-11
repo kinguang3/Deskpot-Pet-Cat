@@ -31,14 +31,7 @@ class DialogueBubble(QWidget):
         self._display_timer.setSingleShot(True)
         self._display_timer.timeout.connect(self.hide_bubble)
 
-        self._opacity_effect = None
-        self._fade_timer = QTimer(self)
-        self._fade_timer.timeout.connect(self._on_fade)
         logger.debug("DialogueBubble created")
-
-    def _on_fade(self):
-        """淡出动画完成后隐藏。"""
-        self.hide_bubble()
 
     def show_text(self, text: str, duration: int = 3000):
         """显示对话文本。

@@ -36,8 +36,6 @@ class Pet(QObject):
 
         self._name: str = "Nina"
         self._facing_right: bool = True
-        self._x: int = 0
-        self._y: int = 0
 
         # 连接动画帧变化到窗口渲染
         self._anim.frame_changed.connect(self._on_frame_changed)
@@ -72,16 +70,12 @@ class Pet(QObject):
 
     def start(self):
         """启动宠物，开始播放 idle 动画。"""
-        self._x = self._window.pos().x()
-        self._y = self._window.pos().y()
         self._anim.play("idle")
         self._event_bus.emit("pet.started", {"name": self._name})
         logger.info("Pet started: %s", self._name)
 
     def move_to(self, x: int, y: int):
         """移动到指定位置。"""
-        self._x = x
-        self._y = y
         self._window.move(x, y)
         self._event_bus.emit("pet.moved", {"x": x, "y": y})
 

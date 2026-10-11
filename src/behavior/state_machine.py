@@ -18,9 +18,8 @@ logger = get_logger(__name__)
 class State:
     """状态基类。"""
 
-    def __init__(self, name: str, priority: int = 0):
+    def __init__(self, name: str):
         self.name = name
-        self.priority = priority
         self._machine = None
 
     def set_machine(self, machine):

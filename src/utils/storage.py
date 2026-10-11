@@ -52,8 +52,7 @@ class Storage:
                     exc_info=True,
                 )
 
-        self._cache: dict[str, Any] = {}
-        self._loaded = False
+        self._cache: dict[str, dict] = {}
         logger.debug(
             "Storage initialized (dir: %s, available: %s)",
             self._data_dir,
@@ -84,7 +83,6 @@ class Storage:
         else:
             self._cache[name] = {}
             logger.debug("Data file not found, using empty: %s", name)
-        self._loaded = True
         return self._cache[name]
 
     def _recover_corrupt(self, path: Path) -> dict:
