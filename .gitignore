@@ -58,3 +58,6 @@ fbank_lfr_cmvn_feature.json
 # Auto-generated / legacy specs stay ignored.
 *.spec
 !GBC.Nina.v*.spec
+
+# Local-only docs (development backlog, never published)
+docs/backlog.md
