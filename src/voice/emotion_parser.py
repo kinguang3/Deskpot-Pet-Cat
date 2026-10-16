@@ -20,7 +20,6 @@ logger = get_logger(__name__)
 
 # 内部统一标签
 EMOTION_HAPPY = "HAPPY"
-EMOTION_CALM = "CALM"
 EMOTION_ANGRY = "ANGRY"
 EMOTION_SAD = "SAD"
 EMOTION_NEUTRAL = "NEUTRAL"

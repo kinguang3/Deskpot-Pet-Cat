@@ -50,11 +50,6 @@ class AudioSegmenter:
         self._silence_run_ms = 0.0
         self._has_speech = False
 
-    def reset(self):
-        self._buffer.clear()
-        self._silence_run_ms = 0.0
-        self._has_speech = False
-
     def feed(self, pcm_bytes: bytes):
         """送入一块音频"""
         if not pcm_bytes:

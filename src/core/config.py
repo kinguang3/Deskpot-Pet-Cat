@@ -56,18 +56,6 @@ class ConfigManager:
         self._data: dict = {}
         self._load()
 
-    # 基础属性
-
-    @property
-    def base_dir(self) -> Path:
-        """项目根目录的绝对路径"""
-        return self._base_dir
-
-    @property
-    def config_dir(self) -> Path:
-        """配置文件所在目录的绝对路径"""
-        return self._config_dir
-
     # 加载与保存
 
     def _load(self):

@@ -50,10 +50,6 @@ portable.txt
 logs/
 *.log
 
-# Models (downloaded, not source)
-VOICE_WAKE_DEBUG_LOG.md
-fbank_lfr_cmvn_feature.json
-
 # PyInstaller: only track the curated release spec (GBC.Nina.v*.spec).
 # Auto-generated / legacy specs stay ignored.
 *.spec

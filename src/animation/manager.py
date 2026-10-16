@@ -75,7 +75,6 @@ class AnimationManager(QObject):
             logger.warning("No frames for animation: %s", animation_name)
             return
 
-        old_anim = self._current_animation
         self.stop()
 
         self._current_animation = animation_name

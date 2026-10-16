@@ -57,7 +57,6 @@ class DialogueBubble(QWidget):
 
     def _adjust_size(self):
         """根据文本内容调整气泡大小。"""
-        font = QFont("Microsoft YaHei", 10)
         fm = self.fontMetrics()
         text_rect = fm.boundingRect(
             0, 0, 300, 1000, Qt.TextFlag.TextWordWrap, self._text

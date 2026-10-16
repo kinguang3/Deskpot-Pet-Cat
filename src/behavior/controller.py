@@ -152,10 +152,6 @@ class BehaviorController(QObject):
         self._scheduler.set_auto_move(enabled)
         logger.info("auto_move changed -> %s", enabled)
 
-    @property
-    def auto_move(self) -> bool:
-        return self._auto_move
-
     # ─── 自主行为决策（使用 Scheduler） ───
 
     def _on_behavior_tick(self):

@@ -24,7 +24,6 @@ import sys
 import time
 from logging import Filter, LogRecord, StreamHandler
 
-DEFAULT_LOG_DIR = None  # None 表示自动解析到用户数据目录（见 setup_logger）
 DEFAULT_LOG_PREFIX = "app"
 DEFAULT_MAX_FILES = 3
 DEFAULT_DATE_FMT = "%Y-%m-%d %H:%M:%S"

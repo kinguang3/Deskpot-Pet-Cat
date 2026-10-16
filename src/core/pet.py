@@ -52,10 +52,6 @@ class Pet(QObject):
     def name(self) -> str:
         return self._name
 
-    @property
-    def facing_right(self) -> bool:
-        return self._facing_right
-
     def set_facing(self, right: bool):
         """设置朝向。
 

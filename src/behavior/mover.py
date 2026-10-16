@@ -76,10 +76,6 @@ class WalkMover(QObject):
         if isinstance(data, dict) and "behavior.auto_move" in data:
             self.set_auto_move(bool(data["behavior.auto_move"]))
 
-    @property
-    def auto_move(self) -> bool:
-        return self._auto_move
-
     def set_auto_move(self, enabled: bool):
         """设置开关。关闭时若正在行走则立即停下。"""
         enabled = bool(enabled)
