@@ -8,12 +8,10 @@
 """
 
 import json
-import os
-import shutil
 from pathlib import Path
 
 from src.utils.logger import get_logger
-from src.utils import paths
+from src.utils import json_io, paths
 
 logger = get_logger(__name__)
 
@@ -76,7 +74,9 @@ class Storage:
                 logger.debug("Data loaded: %s", name)
             except json.JSONDecodeError:
                 logger.error("Failed to parse data file: %s", path.name)
-                self._cache[name] = self._recover_corrupt(path)
+                self._cache[name] = json_io.recover_with_backup(
+                    path, label="data"
+                )
             except OSError:
                 logger.error("Failed to read data file: %s", path.name)
                 self._cache[name] = {}
@@ -85,69 +85,16 @@ class Storage:
             logger.debug("Data file not found, using empty: %s", name)
         return self._cache[name]
 
-    def _recover_corrupt(self, path: Path) -> dict:
-        """数据文件损坏时的恢复：优先用 .bak，再隔离损坏文件"""
-        backup = path.with_suffix(".json.bak")
-        if backup.exists():
-            try:
-                with open(backup, "r", encoding="utf-8") as f:
-                    recovered = json.load(f)
-                logger.warning(
-                    "Recovered data from backup: %s", backup.name
-                )
-                self._quarantine(path)
-                return recovered
-            except (OSError, json.JSONDecodeError):
-                logger.warning("Data backup also unusable: %s", backup.name)
-
-        self._quarantine(path)
-        logger.error(
-            "Data file corrupted and no usable backup; starting empty. "
-            "Corrupt file kept at %s",
-            path.with_suffix(".json.corrupt").name,
-        )
-        return {}
-
-    @staticmethod
-    def _quarantine(path: Path) -> None:
-        """把损坏文件改名隔离，避免被后续写入覆盖"""
-        try:
-            path.replace(path.with_suffix(".json.corrupt"))
-        except OSError:
-            logger.warning("Failed to quarantine corrupt data file: %s", path)
-
     def save(self, data: dict, name: str = "pet_data") -> bool:
         """原子化保存数据。
 
-        先序列化到内存，再写临时文件并 fsync，最后 os.replace 原子替换。
-        这样进程崩溃/断电时目标文件要么是旧内容、要么是完整新内容，
-        不会出现被截断的非法 JSON（否则下次 load 会静默清空数据）。
-
-        Returns:
-            True 成功落盘；False 失败（调用方可据此重试）。
+        实现见 :func:`src.utils.json_io.atomic_write_json`：写临时文件 ->
+        fsync -> os.replace，避免崩溃/断电产生截断的非法 JSON。
         """
         path = self._get_file_path(name)
-        tmp_path = path.with_suffix(".json.tmp")
-        backup_path = path.with_suffix(".json.bak")
-        try:
-            # 提前序列化，暴露不可 JSON 序列化的值
-            payload = json.dumps(data, indent=4, ensure_ascii=False)
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                f.write(payload)
-                f.flush()
-                os.fsync(f.fileno())
-            # 覆盖前滚动保留上一份完好内容，供 load() 损坏时回退
-            if path.exists():
-                shutil.copy2(path, backup_path)
-            os.replace(tmp_path, path)
+        ok = json_io.atomic_write_json(
+            path, data, label="data", strict_backup=True
+        )
+        if ok:
             self._cache[name] = data
-            logger.debug("Data saved: %s", name)
-            return True
-        except (OSError, TypeError, ValueError):
-            logger.exception("Failed to save data: %s", name)
-            try:
-                if tmp_path.exists():
-                    tmp_path.unlink()
-            except OSError:
-                pass
-            return False
+        return ok

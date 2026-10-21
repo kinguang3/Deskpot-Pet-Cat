@@ -24,6 +24,8 @@ class DialogueBubble(QWidget):
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
         )
+        # 统一字体：_adjust_size 用 fontMetrics 测量，paintEvent 用同一字体绘制
+        self.setFont(QFont("Microsoft YaHei", 10))
         self.setVisible(False)
 
         self._text: str = ""
@@ -102,7 +104,7 @@ class DialogueBubble(QWidget):
 
         # 绘制文本
         painter.setPen(QColor(60, 60, 60))
-        painter.setFont(QFont("Microsoft YaHei", 10))
+        painter.setFont(self.font())
         text_rect = rect.adjusted(10, 10, -10, -10)
         painter.drawText(
             text_rect,
