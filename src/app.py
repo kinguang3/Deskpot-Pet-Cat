@@ -160,9 +160,6 @@ class App(QObject):
             "window.mouse_moved", self._on_window_mouse_moved
         )
 
-        # 状态变化事件
-        self._event_bus.on("state.changed", self._on_state_changed)
-
         # 语音情绪事件
         self._event_bus.on("voice.emotion_detected", self._on_voice_emotion)
 
@@ -351,38 +348,33 @@ class App(QObject):
 
     def _show_greeting(self):
         """显示问候语。"""
-        if self._config.get("behavior.dialogue_enabled", True):
-            text = self._dialogue_content.get_time_based_line()
-            self._show_dialogue(text)
+        self._show_dialogue(self._dialogue_content.get_time_based_line())
 
     def _show_dialogue(self, text: str):
         """在宠物头顶显示对话气泡。"""
         if not self._config.get("behavior.dialogue_enabled", True):
             return
 
-        pet_x = self._window.pos().x()
-        pet_y = self._window.pos().y()
-        pet_w = self._window.width()
-
         self._dialogue_bubble.show_text(text, duration=3000)
-        bubble_w = self._dialogue_bubble.width()
-        bubble_x = pet_x + (pet_w - bubble_w) // 2
-        bubble_y = pet_y - self._dialogue_bubble.height() - 5
-        self._dialogue_bubble.move(bubble_x, bubble_y)
+        self._position_bubble()
         self._dialogue_bubble.show()
         self._dialogue_bubble.raise_()
 
-    def _update_bubble_position(self):
-        """若气泡可见，重新定位"""
-        if not self._dialogue_bubble.isVisible():
-            return
+    def _position_bubble(self):
+        """把气泡放到宠物头顶正中（气泡显示/窗口移动后都要调）。"""
         pet_x = self._window.pos().x()
         pet_y = self._window.pos().y()
         pet_w = self._window.width()
-        bubble_w = self._dialogue_bubble.width()
-        bubble_x = pet_x + (pet_w - bubble_w) // 2
-        bubble_y = pet_y - self._dialogue_bubble.height() - 5
-        self._dialogue_bubble.move(bubble_x, bubble_y)
+        bubble = self._dialogue_bubble
+
+        bubble_x = pet_x + (pet_w - bubble.width()) // 2
+        bubble_y = pet_y - bubble.height() - 5
+        bubble.move(bubble_x, bubble_y)
+
+    def _update_bubble_position(self):
+        """若气泡可见，重新定位"""
+        if self._dialogue_bubble.isVisible():
+            self._position_bubble()
 
     def _random_dialogue(self):
         """随机显示一句对话。"""
@@ -408,15 +400,11 @@ class App(QObject):
             # 唤醒 → 情感变化 + 记录
             self._emotion_system.on_wake()
             self._memory.record_wake()
-            if self._config.get("behavior.dialogue_enabled", True):
-                text = self._dialogue_content.get_wake_line()
-                self._show_dialogue(text)
+            self._show_dialogue(self._dialogue_content.get_wake_line())
         elif current != "dragged":
             # 点击 → 快乐↑ 依恋↑
             self._emotion_system.on_user_click()
-            if self._config.get("behavior.dialogue_enabled", True):
-                text = self._dialogue_content.get_click_line()
-                self._show_dialogue(text)
+            self._show_dialogue(self._dialogue_content.get_click_line())
 
     def _on_pet_double_click(self, data: dict):
         """处理双击宠物。"""
@@ -424,17 +412,13 @@ class App(QObject):
         if current not in ("sleep", "dragged"):
             anim = random.choice(["typing", "watching"])
             self._anim_manager.play(anim)
-            if self._config.get("behavior.dialogue_enabled", True):
-                text = self._dialogue_content.get_click_line()
-                self._show_dialogue(text)
+            self._show_dialogue(self._dialogue_content.get_click_line())
 
     def _on_pet_right_click(self, data: dict):
         """处理右键宠物。"""
         if self._state_machine.is_state("sleep"):
             return
-        if self._config.get("behavior.dialogue_enabled", True):
-            text = self._dialogue_content.get_hover_line()
-            self._show_dialogue(text)
+        self._show_dialogue(self._dialogue_content.get_hover_line())
 
     def _on_hover_enter(self, data: dict):
         """鼠标悬停进入。"""
@@ -444,9 +428,7 @@ class App(QObject):
         self._emotion_system.on_user_hover()
         self._memory.record_interaction()
         if random.random() < 0.3:
-            if self._config.get("behavior.dialogue_enabled", True):
-                text = self._dialogue_content.get_hover_line()
-                self._show_dialogue(text)
+            self._show_dialogue(self._dialogue_content.get_hover_line())
 
     def _on_hover_leave(self, data: dict):
         """鼠标悬停离开。"""
@@ -458,14 +440,6 @@ class App(QObject):
             return
         self._emotion_system.on_user_drag()
         self._behavior_controller.on_drag_start()
-
-    def _on_state_changed(self, data: dict):
-        """状态变化回调。
-
-        其他模块（BehaviorController / EmotionSystem）各自监听该事件，
-        这里只保留订阅占位，避免误删注册关系。
-        """
-        return
 
     def _on_voice_emotion(self, data: dict):
         """处理语音情绪检测结果。"""
@@ -480,21 +454,14 @@ class App(QObject):
 
         # 如果在聆听模式，显示聆听状态
         if is_listening:
-            if self._config.get("behavior.dialogue_enabled", True):
-                self._show_dialogue("我在听...")
+            self._show_dialogue("我在听...")
             return
 
         # 显示反应台词（短期）
-        if self._config.get("behavior.dialogue_enabled", True):
-            reaction = self._dialogue_content.get_voice_emotion_line(emotion)
-            self._show_dialogue(reaction)
+        reaction = self._dialogue_content.get_voice_emotion_line(emotion)
+        self._show_dialogue(reaction)
 
-        logger.info(
-            "Voice emotion reacted: %s (energy=%.1f) -> %s",
-            emotion,
-            energy,
-            reaction if self._config.get("behavior.dialogue_enabled", True) else "no dialogue",
-        )
+        logger.info("Voice emotion reacted: %s (energy=%.1f)", emotion, energy)
 
     def _on_voice_command(self, data: dict):
         """处理语音指令检测结果。"""
@@ -510,7 +477,7 @@ class App(QObject):
     def _on_command_show_dialogue(self, data: dict):
         """显示指令对话。"""
         text = data.get("text", "")
-        if text and self._config.get("behavior.dialogue_enabled", True):
+        if text:
             self._show_dialogue(text)
 
     def _on_command_play_animation(self, data: dict):
@@ -532,15 +499,13 @@ class App(QObject):
 
     def _on_command_show_status(self, data: dict):
         """显示状态信息。"""
-        if self._config.get("behavior.dialogue_enabled", True):
-            # 获取情感状态
-            emotion_info = self._emotion_system.get_debug_info()
-            status_text = (
-                f"精力: {emotion_info['energy']:.0f} "
-                f"快乐: {emotion_info['happiness']:.0f} "
-                f"好奇: {emotion_info['curiosity']:.0f}"
-            )
-            self._show_dialogue(status_text)
+        emotion_info = self._emotion_system.get_debug_info()
+        status_text = (
+            f"精力: {emotion_info['energy']:.0f} "
+            f"快乐: {emotion_info['happiness']:.0f} "
+            f"好奇: {emotion_info['curiosity']:.0f}"
+        )
+        self._show_dialogue(status_text)
 
     def _on_command_open_website(self, data: dict):
         """打开网站。"""
@@ -550,12 +515,10 @@ class App(QObject):
             try:
                 webbrowser.open(url)
                 logger.info("Opened website: %s", url)
-                if self._config.get("behavior.dialogue_enabled", True):
-                    self._show_dialogue(f"正在打开 {url}")
+                self._show_dialogue(f"正在打开 {url}")
             except Exception as e:
                 logger.exception("Failed to open website: %s", url)
-                if self._config.get("behavior.dialogue_enabled", True):
-                    self._show_dialogue("打开网站失败")
+                self._show_dialogue("打开网站失败")
 
     def eventFilter(self, watched, event):
         """事件过滤器"""
