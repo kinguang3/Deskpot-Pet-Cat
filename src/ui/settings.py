@@ -317,14 +317,7 @@ class SettingsPanel(QWidget):
 
         layout.addStretch()
 
-        # 连接信号
-        self._size_slider.valueChanged.connect(
-            lambda v: self._size_label.setText(f"{v}%")
-        )
-        self._opacity_slider.valueChanged.connect(
-            lambda v: self._opacity_label.setText(f"{v}%")
-        )
-
+        # 连接信号（标签更新统一走 _on_size_changed/_on_opacity_changed）
         self._size_slider.valueChanged.connect(self._on_size_changed)
         self._opacity_slider.valueChanged.connect(self._on_opacity_changed)
         self._topmost_check.stateChanged.connect(self._on_topmost_changed)
@@ -596,31 +589,11 @@ class SettingsPanel(QWidget):
 
         self._updating = True
         try:
-            # 更新UI控件
-            self._size_slider.setValue(
-                int(self._current.get("window.size_scale", 1.0) * 100)
-            )
-            self._opacity_slider.setValue(
-                int(self._current.get("window.opacity", 0.95) * 100)
-            )
-            self._topmost_check.setChecked(
-                self._current.get("window.always_on_top", True)
-            )
-            self._auto_move_check.setChecked(
-                self._current.get("behavior.auto_move", True)
-            )
-            self._dialogue_check.setChecked(
-                self._current.get("behavior.dialogue_enabled", True)
-            )
+            # 更新UI控件与标签
+            self._sync_ui_from_state(self._current)
             self._voice_enabled_check.setChecked(
                 self._current.get("voice.enabled", False)
             )
-
-            # 加载唤醒词
-            wake_words = self._current.get(
-                "voice.commands.wake_words", ["hey nina", "小猫", "nina"]
-            )
-            self._wake_words_input.setText(", ".join(wake_words))
 
             # 加载麦克风选择
             self._refresh_mic_devices(
@@ -636,12 +609,60 @@ class SettingsPanel(QWidget):
 
             # 加载指令列表
             self._refresh_commands_list()
-
-            # 更新标签显示
-            self._size_label.setText(f"{self._size_slider.value()}%")
-            self._opacity_label.setText(f"{self._opacity_slider.value()}%")
         finally:
             self._updating = False
+
+    def _sync_ui_from_state(self, state: dict):
+        """把点分键状态写入预览相关控件并刷新标签。
+
+        _load_settings / closeEvent 回滚 / 重置按钮共用，
+        避免四处维护同一份控件清单。
+        """
+        self._size_slider.setValue(
+            int(state.get("window.size_scale", 1.0) * 100)
+        )
+        self._opacity_slider.setValue(
+            int(state.get("window.opacity", 0.95) * 100)
+        )
+        self._topmost_check.setChecked(
+            state.get("window.always_on_top", True)
+        )
+        self._auto_move_check.setChecked(
+            state.get("behavior.auto_move", True)
+        )
+        self._dialogue_check.setChecked(
+            state.get("behavior.dialogue_enabled", True)
+        )
+        self._wake_words_input.setText(
+            ", ".join(
+                state.get(
+                    "voice.commands.wake_words",
+                    ["hey nina", "小猫", "nina"],
+                )
+            )
+        )
+        self._size_label.setText(f"{self._size_slider.value()}%")
+        self._opacity_label.setText(f"{self._opacity_slider.value()}%")
+
+    def _collect_wake_words(self) -> list:
+        """解析唤醒词输入框（逗号分隔，去空白）。"""
+        return [
+            w.strip()
+            for w in self._wake_words_input.text().split(",")
+            if w.strip()
+        ]
+
+    def _persist(self) -> bool:
+        """统一落盘与状态同步：失败置脏返回 False，成功刷新基准。"""
+        if not self._config.save():
+            # 落盘失败时保持 _dirty=True，让用户关闭面板时仍能回滚/重试，
+            # 否则内存标记为「已保存」但磁盘仍是旧值，状态不一致
+            self._dirty = True
+            logger.error("保存设置失败，保留未保存状态以便重试")
+            return False
+        self._initial = self._current.copy()
+        self._dirty = False
+        return True
 
     def _save_settings(self):
         """保存当前临时设置到配置文件。"""
@@ -668,9 +689,9 @@ class SettingsPanel(QWidget):
         )
 
         # 保存唤醒词
-        wake_text = self._wake_words_input.text()
-        wake_words = [w.strip() for w in wake_text.split(",") if w.strip()]
-        self._config.set("voice.commands.wake_words", wake_words)
+        self._config.set(
+            "voice.commands.wake_words", self._collect_wake_words()
+        )
 
         # 保存麦克风选择（存设备名，端口/索引漂移不影响匹配）
         mic_name = self._mic_combo.currentData()
@@ -678,14 +699,12 @@ class SettingsPanel(QWidget):
         self._config.set("voice.input_device", mic_name or None)
 
         # 保存自定义指令
-        commands = self._current.get("voice.commands.custom", [])
-        self._config.set("voice.commands.custom", commands)
+        self._config.set(
+            "voice.commands.custom",
+            self._current.get("voice.commands.custom", []),
+        )
 
-        if not self._config.save():
-            # 落盘失败时保持 _dirty=True，让用户关闭面板时仍能回滚/重试，
-            # 否则内存标记为「已保存」但磁盘仍是旧值，状态不一致
-            self._dirty = True
-            logger.error("保存设置失败，保留未保存状态以便重试")
+        if not self._persist():
             # 必须让用户看见：否则表现为「点了保存没反应」
             QMessageBox.critical(
                 self,
@@ -698,9 +717,6 @@ class SettingsPanel(QWidget):
                 "详细信息见 logs 目录下的日志文件。",
             )
             return
-
-        self._initial = self._current.copy()
-        self._dirty = False
 
         # 语音开关/麦克风变化都需要重启才生效（麦克风与 Provider 在
         # start() 时创建），这里明确告知，避免用户以为保存后立刻生效
@@ -731,23 +747,16 @@ class SettingsPanel(QWidget):
         立即持久化可以避免用户添加后直接关闭面板时
         closeEvent 因 _dirty =True 静默丢弃改动。
         """
-        wake_text = self._wake_words_input.text()
-        wake_words = [w.strip() for w in wake_text.split(",") if w.strip()]
-        self._config.set("voice.commands.wake_words", wake_words)
+        self._config.set(
+            "voice.commands.wake_words", self._collect_wake_words()
+        )
         self._config.set(
             "voice.commands.custom",
             self._current.get("voice.commands.custom", []),
         )
-        if not self._config.save():
-            # 必须显式置脏：指令的添加/编辑/删除走立即保存路径，
-            # 进入时 _dirty 可能仍是 False。若不置脏，关闭面板时
-            # closeEvent 会认为「无未保存改动」而放行，
-            # 结果 ConfigManager 内存里是新指令、磁盘上却是旧的。
-            self._dirty = True
-            logger.error("保存指令失败，保留未保存状态以便重试")
+        if not self._persist():
+            # 错误已在 _persist 中记录（置脏后 closeEvent 会拦截）
             return
-        self._initial = self._current.copy()
-        self._dirty = False
         self.settings_changed.emit()
         self._event_bus.emit("settings.changed", self._current.copy())
 
@@ -767,20 +776,13 @@ class SettingsPanel(QWidget):
         for key, val in defaults.items():
             self._current[key] = val
 
-        # 更新UI控件
-        self._size_slider.setValue(int(defaults["window.size_scale"] * 100))
-        self._opacity_slider.setValue(int(defaults["window.opacity"] * 100))
-        self._topmost_check.setChecked(defaults["window.always_on_top"])
-        self._auto_move_check.setChecked(defaults["behavior.auto_move"])
-        self._dialogue_check.setChecked(defaults["behavior.dialogue_enabled"])
-
-        # 重置唤醒词和指令
-        self._wake_words_input.setText(", ".join(defaults["voice.commands.wake_words"]))
-        self._refresh_commands_list()
-        self._mic_combo.setCurrentIndex(0)
-
-        self._size_label.setText(f"{self._size_slider.value()}%")
-        self._opacity_label.setText(f"{self._opacity_slider.value()}%")
+        self._updating = True
+        try:
+            self._sync_ui_from_state(self._current)
+            self._refresh_commands_list()
+            self._mic_combo.setCurrentIndex(0)
+        finally:
+            self._updating = False
 
         # 应用预览（不保存）
         self.preview_changed.emit(self._current.copy())
@@ -793,34 +795,12 @@ class SettingsPanel(QWidget):
             # 恢复到打开时的状态
             self._current = self._initial.copy()
             self._updating = True
-            # 更新UI控件以反映恢复值
-            self._size_slider.setValue(
-                int(self._current.get("window.size_scale", 1.0) * 100)
-            )
-            self._opacity_slider.setValue(
-                int(self._current.get("window.opacity", 0.95) * 100)
-            )
-            self._topmost_check.setChecked(
-                self._current.get("window.always_on_top", True)
-            )
-            self._auto_move_check.setChecked(
-                self._current.get("behavior.auto_move", True)
-            )
-            self._dialogue_check.setChecked(
-                self._current.get("behavior.dialogue_enabled", True)
-            )
-            self._wake_words_input.setText(
-                ", ".join(
-                    self._current.get(
-                        "voice.commands.wake_words",
-                        ["hey nina", "小猫", "nina"],
-                    )
-                )
-            )
-            self._refresh_commands_list()
-            self._size_label.setText(f"{self._size_slider.value()}%")
-            self._opacity_label.setText(f"{self._opacity_slider.value()}%")
-            self._updating = False
+            try:
+                # 更新UI控件以反映恢复值
+                self._sync_ui_from_state(self._current)
+                self._refresh_commands_list()
+            finally:
+                self._updating = False
             # 通知主窗口恢复
             self.preview_changed.emit(self._current.copy())
             self._dirty = False
