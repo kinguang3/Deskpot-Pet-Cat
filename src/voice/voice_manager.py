@@ -293,56 +293,53 @@ class VoiceManager(QObject):
             n_threads=self._config.get("voice.sensevoice.n_threads", 8),
         )
 
+    def _create_hybrid(self, sample_rate: int, channels: int):
+        """按配置创建混合 Provider（AssemblyAI + SenseVoice）"""
+        from src.voice.providers.hybrid_provider import (
+            HybridVoiceProvider,
+        )
+
+        return HybridVoiceProvider(
+            assemblyai_provider=self._create_assemblyai(
+                sample_rate, channels
+            ),
+            sensevoice_provider=self._create_sensevoice(sample_rate, channels),
+            allow_partial=self._config.get(
+                "voice.hybrid.allow_partial_provider", False
+            ),
+            max_workers=self._config.get("voice.hybrid.max_workers", 2),
+        )
+
     def _build_provider(
-        self, name: str, sample_rate: int = 16000, channels: int = 1
+        self,
+        name: str,
+        sample_rate: int = TARGET_SAMPLE_RATE,
+        channels: int = 1,
     ) -> bool:
+        """构建指定名称的 Provider；不可用或未知的名称返回 False
+
+        子 Provider 未就绪的细节由各自 Provider 在构造时输出
+        （如 HybridVoiceProvider._warn_not_ready），此处只记录结果。
+        """
         if self._provider is not None:
             return True
 
-        if name == "hybrid":
-            from src.voice.providers.hybrid_provider import (
-                HybridVoiceProvider,
-            )
+        factories = {
+            "assemblyai": self._create_assemblyai,
+            "sensevoice": self._create_sensevoice,
+            "hybrid": self._create_hybrid,
+        }
+        factory = factories.get(name)
+        if factory is None:
+            logger.error("Unknown voice provider: %s", name)
+            return False
 
-            assemblyai = self._create_assemblyai(sample_rate, channels)
-            sensevoice = self._create_sensevoice(sample_rate, channels)
-            provider = HybridVoiceProvider(
-                assemblyai_provider=assemblyai,
-                sensevoice_provider=sensevoice,
-                allow_partial=self._config.get(
-                    "voice.hybrid.allow_partial_provider", False
-                ),
-                max_workers=self._config.get("voice.hybrid.max_workers", 2),
-            )
-            if not provider.is_ready():
-                logger.error(
-                    "Hybrid provider not ready "
-                    "(assemblyai_ready=%s, sensevoice_ready=%s)",
-                    assemblyai.is_ready(),
-                    sensevoice.is_ready(),
-                )
-                return False
-            self._provider = provider
-            return True
-
-        if name == "sensevoice":
-            provider = self._create_sensevoice(sample_rate, channels)
-            if not provider.is_ready():
-                logger.error("SenseVoice provider not ready")
-                return False
-            self._provider = provider
-            return True
-
-        if name == "assemblyai":
-            provider = self._create_assemblyai(sample_rate, channels)
-            if not provider.is_ready():
-                logger.error("AssemblyAI provider not ready")
-                return False
-            self._provider = provider
-            return True
-
-        logger.error("Unknown voice provider: %s", name)
-        return False
+        provider = factory(sample_rate, channels)
+        if not provider.is_ready():
+            logger.error("%s provider not ready", name)
+            return False
+        self._provider = provider
+        return True
 
     def _on_audio(self, pcm_bytes: bytes):
         if not self._running or not self._segmenter:

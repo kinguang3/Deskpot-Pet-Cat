@@ -348,6 +348,6 @@ class CommandManager:
             wake_lower = wake_word.lower()
             if wake_lower in text_lower:
                 idx = text_lower.index(wake_lower)
-                remaining = text[idx + len(wake_word):].strip()
+                remaining = text[idx + len(wake_lower):].strip()
                 return remaining
         return text
