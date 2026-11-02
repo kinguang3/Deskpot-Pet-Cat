@@ -73,8 +73,7 @@ class BaseVoiceProvider(ABC):
                 "sentiment": "POSITIVE" | "NEUTRAL" | "NEGATIVE" | "UNKNOWN",
                 "confidence": float,
                 "segments": [   # 逐句结果
-                    {"text": str, "sentiment": str, "confidence": float,
-                     "start_ms": int, "end_ms": int},
+                    {"text": str, "sentiment": str, "confidence": float},
                     ...
                 ],
                 "raw": dict,    # 原始返回

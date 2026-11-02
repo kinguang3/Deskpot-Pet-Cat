@@ -119,8 +119,6 @@ class EmotionParser:
                     "emotion": seg_emo,
                     "sentiment": seg.get("sentiment", "UNKNOWN"),
                     "confidence": seg_conf,
-                    "start_ms": seg.get("start_ms", 0),
-                    "end_ms": seg.get("end_ms", 0),
                 }
             )
 

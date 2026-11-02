@@ -158,8 +158,6 @@ class AssemblyAIProvider(BaseVoiceProvider):
                 "text": item.text or "",
                 "sentiment": (item.sentiment or "NEUTRAL").upper(),
                 "confidence": float(item.confidence or 0.0),
-                "start_ms": int(item.start or 0),
-                "end_ms": int(item.end or 0),
             }
             segments.append(seg)
 
