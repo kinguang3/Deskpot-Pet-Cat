@@ -21,8 +21,12 @@ class DialogueBubble(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # 置顶：宠物窗口是置顶的普通窗口，气泡是 Tool 窗口，不加 StaysOnTopHint
+        # 时可能被宠物本体或其它置顶应用压住（气泡是瞬时 UI，常驻置顶无害）
         self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowStaysOnTopHint
         )
         # 统一字体：_adjust_size 用 fontMetrics 测量，paintEvent 用同一字体绘制
         self.setFont(QFont("Microsoft YaHei", 10))
